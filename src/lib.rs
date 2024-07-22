@@ -1,4 +1,4 @@
-use anyhow::{bail, ensure, Context as _, Result};
+use anyhow::{bail, ensure, Context, Result};
 use num::{BigInt, BigUint, One as _, Zero as _};
 use num_bigint::{RandBigInt as _, Sign, ToBigInt as _};
 use rand_core::OsRng;
@@ -128,6 +128,33 @@ pub fn mod_exp(base: &BigUint, exp: &BigUint, modulo: &BigUint) -> BigUint {
     }
 }
 
+pub fn crt(factors: &[(BigUint, BigUint)]) -> Result<BigUint> {
+    let mut f_iter = factors.iter();
+    let mut current = f_iter.next().context("No factors")?.clone();
+
+    for next in f_iter {
+        let (gcd, curr_m, next_m) = gcd(&current.1, &next.1);
+        ensure!(gcd.is_one(), "{} and {} are not coprime", current.1, next.1);
+        // println!(
+        //     "GCD({},{}) -> {} = {} * {} + {} * {}",
+        //     current.1, next.1, gcd, curr_m, current.1, next.1, next_m
+        // );
+        // println!("{}, {}", curr_m, next_m);
+        let new = (&next.0 * &current.1).to_bigint().unwrap() * curr_m
+            + (&current.0 * &next.1).to_bigint().unwrap() * next_m;
+        let product = &current.1 * &next.1;
+        // println!("{}", new);
+        let remainder = if new.sign() == Sign::Minus {
+            (new + product.to_bigint().unwrap()).to_biguint().unwrap()
+        } else {
+            new.to_biguint().unwrap()
+        };
+        current = (remainder, product);
+        // println!("{:?}", current);
+    }
+
+    Ok(current.0)
+}
 
 #[cfg(test)]
 mod tests {
@@ -145,7 +172,6 @@ mod tests {
             expected = (expected * &base) % &prime;
         }
     }
-
 
     #[test]
     #[ignore = "slow"]
@@ -192,6 +218,19 @@ mod tests {
                 assert!(inverse.is_err());
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_crt() -> Result<()> {
+        let factors = [
+            (BigUint::from(0u32), BigUint::from(3u32)),
+            (BigUint::from(3u32), BigUint::from(4u32)),
+            (BigUint::from(4u32), BigUint::from(5u32))
+        ];
+
+        assert_eq!(BigUint::from(3u32), crt(&factors[0..2])?);
+        assert_eq!(BigUint::from(39u32), crt(&factors)?);
         Ok(())
     }
 }
