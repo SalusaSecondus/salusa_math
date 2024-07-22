@@ -143,7 +143,7 @@ pub fn crt(factors: &[(BigUint, BigUint)]) -> Result<BigUint> {
         let new = (&next.0 * &current.1).to_bigint().unwrap() * curr_m
             + (&current.0 * &next.1).to_bigint().unwrap() * next_m;
         let product = &current.1 * &next.1;
-        // println!("{}", new);
+        let new = new % product.to_bigint().unwrap();
         let remainder = if new.sign() == Sign::Minus {
             (new + product.to_bigint().unwrap()).to_biguint().unwrap()
         } else {
@@ -233,4 +233,5 @@ mod tests {
         assert_eq!(BigUint::from(39u32), crt(&factors)?);
         Ok(())
     }
+
 }
