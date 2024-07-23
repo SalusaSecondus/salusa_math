@@ -136,11 +136,16 @@ impl GroupElement<BigInt> for ZAddElement {
         let raw_result = self.raw().neg();
         self.group.wrap(raw_result + &self.group.modulus).unwrap()
     }
+
+    fn scalar_mult(&self, mult: &BigInt) -> Self {
+        let result = (self.raw() * mult) % &self.group.modulus;
+        self.group.wrap(result).unwrap()
+    }
 }
 
 impl Display for ZAddElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.raw())
+        write!(f, "{}", self.raw())
     }
 }
 
@@ -201,7 +206,7 @@ impl Group<BigInt, ZMultElement> for ZMultGroup {
 
 impl Display for ZMultElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.raw())
+        write!(f, "{}", self.raw())
     }
 }
 
@@ -229,6 +234,11 @@ impl GroupElement<BigInt> for ZMultElement {
             Sign::Minus => self.group.wrap(x + modulo).unwrap(),
             _ => panic!("Impossible result"),
         }
+    }
+    
+    fn scalar_mult(&self, mult: &BigInt) -> Self {
+        let result = self.raw().modpow(mult, &self.group.modulus);
+        self.group.wrap(result).unwrap()
     }
 }
 
@@ -436,6 +446,53 @@ impl
     }
 }
 
+
+pub fn pollard_kangaroo<F, GE, GT>(y: &GE, a: &BigInt, b: &BigInt, g: &GE, n: usize, f: F) -> Result<BigInt>
+    where F: Fn(&GE) -> BigInt,
+        GE: GroupElement<GT>,
+        GT: Eq {
+    let mut xt = BigInt::zero();
+    let mut yt = g.scalar_mult(&b);
+    // println!("Generating first table to {}", n);
+    // let n_f = n as f64;
+    for _i in 1..=n  {
+        // println!("i = {}; yt = {}", _i, yt);
+        // if _i % 1000000 == 0 {
+        //     println!("{}/{} ({})", _i, n, _i as f64 / n_f);
+        // }
+        let fyt = f(&yt);
+        xt += &fyt;
+        yt = yt.gop(&g.scalar_mult(&fyt))?;
+        // xt %= m;
+        // yt %= m;
+    }
+
+    let xt = xt;
+    let yt = yt;
+
+    let mut xw = BigInt::zero();
+    let mut yw = y.clone();
+    let limit = (b - a) + &xt;
+
+    // println!("Doing search");
+
+    while xw < limit {
+        let fyw = f(&yw);
+        // println!("{} <? {}, {}, {}", xw, limit, yw, fyw);
+        xw += &fyw;
+        yw = yw.gop(&g.scalar_mult(&fyw))?;
+        // yw *= g.modpow(&fyw, m);
+        // xw %= m;
+        // yw %= m;
+
+        if yw == yt {
+            return Ok(b + xt - xw);
+        }
+    }
+
+    bail!("Too many iterations");
+}
+
 fn gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
     let mut old_r: BigInt = a.to_owned();
     let mut r: BigInt = b.to_owned();
@@ -464,7 +521,7 @@ fn gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
 
 #[cfg(test)]
 mod tests {
-    use num::One;
+    use num::{FromPrimitive as _, Num, One};
 
     use super::*;
 
@@ -578,6 +635,47 @@ mod tests {
         assert_eq!(one_f, two_f.mop(&two_f.m_inv()?)?);
         println!("3^-1 = {}", three_f.m_inv()?);
         assert_eq!(one_f, three_f.mop(&three_f.m_inv()?)?);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "slow"]
+    fn kangaroo_test() -> Result<()> {
+        let p = BigInt::from_str_radix("11470374874925275658116663507232161402086650258453896274534991676898999262641581519101074740642369848233294239851519212341844337347119899874391456329785623", 10).unwrap();
+        let group = ZMultGroup::modulus(&p);
+        // let _q = BigUint::from_str_radix("335062023296420808191071248367701059461", 10).unwrap();
+        // let _j = BigUint::from_str_radix("34233586850807404623475048381328686211071196701374230492615844865929237417097514638999377942356150481334217896204702", 10).unwrap();
+        let g = BigInt::from_str_radix("622952335333961296978159266084741085889881358738459939978290179936063635566740258555167783009058567397963466103140082647486611657350811560630587013183357", 10).unwrap();
+        let g = group.of(&g)?;
+        let k = 14;
+        let n : u64 = 4 * (0..k).map(|v| 2u64.pow(v.try_into().unwrap())).sum::<u64>() / k;
+        let two = BigInt::from_u32(2).unwrap();
+        let f = |y: &ZMultElement| {
+            let exp = y.raw() % k;
+            two.modpow(&exp, &p)
+        };
+
+        let b = BigInt::one() << 20;
+        let y = BigInt::from_str_radix("7760073848032689505395005705677365876654629189298052775754597607446617558600394076764814236081991643094239886772481052254010323780165093955236429914607119", 10).unwrap();
+        let y = group.of(&y)?;
+        let idx = pollard_kangaroo(&y, &BigInt::zero(), &b, &g, n as usize, f)?;
+        println!("g^{} = {} =? {}", idx, g.scalar_mult(&idx), y);
+        assert_eq!(g.scalar_mult(&idx), y);
+
+        let k = 20;
+        let n : u64 = 4 * (0..k).map(|v| 2u64.pow(v.try_into().unwrap())).sum::<u64>() / k;
+        let two = BigInt::from_u32(2).unwrap();
+        let f = |y: &ZMultElement| {
+            let exp = y.raw() % k;
+            two.modpow(&exp, &p)
+        };
+
+        let b = BigInt::one() << 40;
+        let y = BigInt::from_str_radix("9388897478013399550694114614498790691034187453089355259602614074132918843899833277397448144245883225611726912025846772975325932794909655215329941809013733", 10).unwrap();
+        let y = group.of(&y)?;
+        let idx = pollard_kangaroo(&y, &BigInt::zero(), &b, &g, n as usize, f)?;
+        println!("g^{} = {} =? {}", idx, g.scalar_mult(&idx), y);
+        assert_eq!(g.scalar_mult(&idx), y);
         Ok(())
     }
 }
