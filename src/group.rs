@@ -13,10 +13,10 @@ where
 {
     fn consume(self) -> T;
     fn raw(&self) -> &T;
-    fn gop(&self, rhs: &Self) -> Result<Self>;
+    fn gop(&self, rhs: &Self) -> Self;
     fn neg(&self) -> Self;
     fn identity(&self) -> Self {
-        self.neg().gop(self).unwrap()
+        self.neg().gop(self)
     }
     fn scalar_mult(&self, mult: &BigInt) -> Self {
         let mut r0 = self.identity();
@@ -31,11 +31,11 @@ where
             }
             for i in (0..=mult.bits()).rev() {
                 if mult.bit(i) {
-                    r0 = r0.gop(&r1).unwrap();
-                    r1 = r1.gop(&r1).unwrap();
+                    r0 = r0.gop(&r1);
+                    r1 = r1.gop(&r1);
                 } else {
-                    r1 = r0.gop(&r1).unwrap();
-                    r0 = r0.gop(&r0).unwrap();
+                    r1 = r0.gop(&r1);
+                    r0 = r0.gop(&r0);
                 }
             }
             r0
@@ -126,10 +126,10 @@ impl GroupElement<BigInt> for ZAddElement {
     fn consume(self) -> BigInt {
         self.value
     }
-    fn gop(&self, rhs: &Self) -> Result<Self> {
-        ensure!(self.group == rhs.group);
+    fn gop(&self, rhs: &Self) -> Self {
+        assert_eq!(self.group, rhs.group);
         let raw_result = self.raw() + rhs.raw();
-        self.group.wrap(raw_result % &self.group.modulus)
+        self.group.wrap(raw_result % &self.group.modulus).unwrap()
     }
 
     fn neg(&self) -> Self {
@@ -219,10 +219,10 @@ impl GroupElement<BigInt> for ZMultElement {
         self.value
     }
 
-    fn gop(&self, rhs: &Self) -> Result<Self> {
-        ensure!(self.group == rhs.group);
+    fn gop(&self, rhs: &Self) -> Self {
+        assert_eq!(self.group, rhs.group);
         let raw = (self.raw() * rhs.raw()) % &self.group.modulus;
-        self.group.wrap(raw)
+        self.group.wrap(raw).unwrap()
     }
 
     fn neg(&self) -> Self {
@@ -268,18 +268,25 @@ where
 {
     fn field(&self) -> &impl Field<T, Self, GE, ME>;
 
-    fn mop(&self, rhs: &Self) -> Result<Self> {
-        ensure!(self.field() == rhs.field());
+    fn mop(&self, rhs: &Self) -> Self {
+        assert_eq!(self.field(), rhs.field());
         if self.is_zero() || rhs.is_zero() {
-            return Ok(self.field().identity());
+            return self.field().identity();
         }
-        let raw = self.mult_element().unwrap().gop(&rhs.mult_element()?)?;
-        self.field().me2fe_wrap(raw)
+        let raw = self.mult_element().unwrap().gop(&rhs.mult_element().unwrap());
+        self.field().me2fe_wrap(raw).unwrap()
     }
 
     fn pow(&self, rhs: &BigInt) -> Result<Self> {
+        if self.is_zero() {
+            ensure!(!rhs.is_zero());
+            return Ok(self.clone());
+        } else if self.is_one() {
+            return Ok(self.clone());
+        }
         self.field().me2fe_wrap(self.mult_element()?.scalar_mult(rhs))
     }
+
     fn is_zero(&self) -> bool {
         self.add_element() == self.field().add_group().identity()
     }
@@ -349,10 +356,10 @@ where
         &self.value
     }
 
-    fn gop(&self, rhs: &Self) -> Result<Self> {
-        ensure!(self.field == rhs.field);
+    fn gop(&self, rhs: &Self) -> Self {
+        assert_eq!(self.field, rhs.field);
         self.field
-            .wrap(self.add_element().gop(&rhs.add_element())?.consume())
+            .wrap(self.add_element().gop(&rhs.add_element()).consume()).unwrap()
     }
 
     fn neg(&self) -> Self {
@@ -462,7 +469,7 @@ pub fn pollard_kangaroo<F, GE, GT>(y: &GE, a: &BigInt, b: &BigInt, g: &GE, n: us
         // }
         let fyt = f(&yt);
         xt += &fyt;
-        yt = yt.gop(&g.scalar_mult(&fyt))?;
+        yt = yt.gop(&g.scalar_mult(&fyt));
         // xt %= m;
         // yt %= m;
     }
@@ -480,7 +487,7 @@ pub fn pollard_kangaroo<F, GE, GT>(y: &GE, a: &BigInt, b: &BigInt, g: &GE, n: us
         let fyw = f(&yw);
         // println!("{} <? {}, {}, {}", xw, limit, yw, fyw);
         xw += &fyw;
-        yw = yw.gop(&g.scalar_mult(&fyw))?;
+        yw = yw.gop(&g.scalar_mult(&fyw));
         // yw *= g.modpow(&fyw, m);
         // xw %= m;
         // yw %= m;
@@ -533,20 +540,20 @@ mod tests {
         let group = ZAddGroup::modulus(&seven);
         let zero = group.identity();
         assert_eq!(zero, group.identity());
-        assert_eq!(zero.gop(&zero)?, zero);
+        assert_eq!(zero.gop(&zero), zero);
 
         let one = group.of(&BigInt::one())?;
         let two = group.of(&2u32.into())?;
         assert_ne!(zero, one);
         assert_ne!(two, one);
         assert_ne!(two, zero);
-        assert_eq!(zero.gop(&one)?, one);
-        assert_eq!(one.gop(&zero)?, one);
-        assert_eq!(one.gop(&one)?, two);
+        assert_eq!(zero.gop(&one), one);
+        assert_eq!(one.gop(&zero), one);
+        assert_eq!(one.gop(&one), two);
 
         assert_eq!(seven, group.order().unwrap());
 
-        assert_eq!(zero, one.gop(&one.neg())?);
+        assert_eq!(zero, one.gop(&one.neg()));
         assert_eq!(group.of(&three)?, one.scalar_mult(&10u32.into()));
         assert_eq!(group.of(&six)?, two.scalar_mult(&10u32.into()));
         assert_eq!(zero, one.scalar_mult(&BigInt::zero()));
@@ -562,29 +569,29 @@ mod tests {
         let one_g = group.identity();
         println!("Identity = {}", one_g);
         assert_eq!(one_g, group.identity());
-        assert_eq!(one_g.gop(&one_g)?, one_g);
+        assert_eq!(one_g.gop(&one_g), one_g);
 
         let two_g = group.of(&2u32.into())?;
         let three_g = group.of(&3u32.into())?;
         let four_g = group.of(&4u32.into())?;
         // let eight_g = group.of(&8u32.into())?;
         assert_ne!(two_g, one_g);
-        assert_eq!(two_g.gop(&one_g)?, two_g);
-        assert_eq!(one_g.gop(&two_g)?, two_g);
-        assert_eq!(two_g.gop(&two_g)?, four_g);
+        assert_eq!(two_g.gop(&one_g), two_g);
+        assert_eq!(one_g.gop(&two_g), two_g);
+        assert_eq!(two_g.gop(&two_g), four_g);
 
         assert_eq!(two_g.scalar_mult(&BigInt::one()), two_g);
         assert_eq!(two_g.scalar_mult(&two), four_g);
-        println!("{} + {} = {}", four_g, four_g, four_g.gop(&four_g)?);
+        println!("{} + {} = {}", four_g, four_g, four_g.gop(&four_g));
         assert_eq!(two_g.scalar_mult(&three), one_g);
 
         // assert_eq!(seven, group.order().unwrap());
 
-        assert_eq!(one_g, one_g.gop(&one_g.neg())?);
+        assert_eq!(one_g, one_g.gop(&one_g.neg()));
         println!("2^-1 = {}", two_g.neg());
-        assert_eq!(one_g, two_g.gop(&two_g.neg())?);
+        assert_eq!(one_g, two_g.gop(&two_g.neg()));
         println!("3^-1 = {}", three_g.neg());
-        assert_eq!(one_g, three_g.gop(&three_g.neg())?);
+        assert_eq!(one_g, three_g.gop(&three_g.neg()));
         // assert_eq!(group.of(&three)?, one_g.scalar_mult(&10u32.into()));
         // assert_eq!(group.of(&six)?, two.scalar_mult(&10u32.into()));
         // assert_eq!(zero, one_g.scalar_mult(&BigInt::zero()));
@@ -600,7 +607,7 @@ mod tests {
         let field = ZField::modulus(&seven);
         let zero_f = field.identity();
         assert_eq!(zero_f, field.identity());
-        assert_eq!(zero_f.gop(&zero_f)?, zero_f);
+        assert_eq!(zero_f.gop(&zero_f), zero_f);
 
         let one_f = field.of(&BigInt::one())?;
         let two_f = field.of(&2u32.into())?;
@@ -609,32 +616,32 @@ mod tests {
         assert_ne!(zero_f, one_f);
         assert_ne!(two_f, one_f);
         assert_ne!(two_f, zero_f);
-        assert_eq!(zero_f.gop(&one_f)?, one_f);
-        assert_eq!(one_f.gop(&zero_f)?, one_f);
-        assert_eq!(one_f.gop(&one_f)?, two_f);
+        assert_eq!(zero_f.gop(&one_f), one_f);
+        assert_eq!(one_f.gop(&zero_f), one_f);
+        assert_eq!(one_f.gop(&one_f), two_f);
 
-        assert_eq!(zero_f, one_f.gop(&one_f.neg())?);
+        assert_eq!(zero_f, one_f.gop(&one_f.neg()));
         assert_eq!(field.of(&three)?, one_f.scalar_mult(&10u32.into()));
         assert_eq!(field.of(&six)?, two_f.scalar_mult(&10u32.into()));
         assert_eq!(zero_f, one_f.scalar_mult(&BigInt::zero()));
 
         // Field stuff
-        assert_eq!(two_f.mop(&one_f)?, two_f);
-        assert_eq!(one_f.mop(&two_f)?, two_f);
-        assert_eq!(two_f.mop(&two_f)?, four_f);
+        assert_eq!(two_f.mop(&one_f), two_f);
+        assert_eq!(one_f.mop(&two_f), two_f);
+        assert_eq!(two_f.mop(&two_f), four_f);
 
         assert_eq!(two_f.pow(&BigInt::one())?, two_f);
         assert_eq!(two_f.pow(&two)?, four_f);
-        println!("{} + {} = {}", four_f, four_f, four_f.gop(&four_f)?);
+        println!("{} + {} = {}", four_f, four_f, four_f.gop(&four_f));
         assert_eq!(one_f.pow(&three)?, one_f);
 
         // assert_eq!(seven, group.order().unwrap());
 
-        assert_eq!(one_f, one_f.mop(&one_f.m_inv()?)?);
+        assert_eq!(one_f, one_f.mop(&one_f.m_inv()?));
         println!("2^-1 = {}", two_f.m_inv()?);
-        assert_eq!(one_f, two_f.mop(&two_f.m_inv()?)?);
+        assert_eq!(one_f, two_f.mop(&two_f.m_inv()?));
         println!("3^-1 = {}", three_f.m_inv()?);
-        assert_eq!(one_f, three_f.mop(&three_f.m_inv()?)?);
+        assert_eq!(one_f, three_f.mop(&three_f.m_inv()?));
         Ok(())
     }
 

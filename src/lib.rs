@@ -4,6 +4,7 @@ use num_bigint::{RandBigInt as _, Sign, ToBigInt as _};
 use rand_core::OsRng;
 
 pub mod group;
+pub mod ec;
 
 pub fn gcd(a: &BigUint, b: &BigUint) -> (BigUint, BigInt, BigInt) {
     let mut old_r: BigInt = a.to_bigint().unwrap();
