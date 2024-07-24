@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{bail, ensure, Result};
 use num::{bigint::Sign, BigInt, One, Zero};
-use salusa_math_macros::GroupOps;
+use salusa_math_macros::{FieldOps, GroupOps};
 
 
 pub trait GroupElement<T>: std::fmt::Debug + Sized + Clone + Eq
@@ -114,8 +114,6 @@ pub struct ZAddElement {
     value: BigInt,
     group: ZAddGroup,
 }
-
-// create_group_ops!(ZAddElement);
 
 impl GroupElement<BigInt> for ZAddElement {
     fn identity(&self) -> Self {
@@ -344,13 +342,13 @@ impl ZField {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, GroupOps, FieldOps)]
 pub struct GenericFieldElement<T, F, GE, ME>
 where
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
-    F: Field<T, Self, GE, ME>,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
 {
     value: T,
     field: F,
@@ -364,7 +362,7 @@ where
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
-    F: Field<T, Self, GE, ME>,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
 {
     fn consume(self) -> T {
         self.value
@@ -626,10 +624,11 @@ mod tests {
         let three = BigInt::from(3u32);
         let six = BigInt::from(6u32);
         let seven = BigInt::from(7u32);
+        let ten = BigInt::from(10u32);
         let field = ZField::modulus(&seven);
         let zero_f = field.identity();
         assert_eq!(zero_f, field.identity());
-        assert_eq!(zero_f.gop(&zero_f), zero_f);
+        assert_eq!(&zero_f + &zero_f, zero_f);
 
         let one_f = field.of(&BigInt::one())?;
         let two_f = field.of(&2u32.into())?;
@@ -638,32 +637,32 @@ mod tests {
         assert_ne!(zero_f, one_f);
         assert_ne!(two_f, one_f);
         assert_ne!(two_f, zero_f);
-        assert_eq!(zero_f.gop(&one_f), one_f);
-        assert_eq!(one_f.gop(&zero_f), one_f);
-        assert_eq!(one_f.gop(&one_f), two_f);
+        assert_eq!(&zero_f + &one_f, one_f);
+        assert_eq!(&one_f + &zero_f, one_f);
+        assert_eq!(&one_f + &one_f, two_f);
 
-        assert_eq!(zero_f, one_f.gop(&one_f.gneg()));
-        assert_eq!(field.of(&three)?, one_f.scalar_mult(&10u32.into()));
-        assert_eq!(field.of(&six)?, two_f.scalar_mult(&10u32.into()));
-        assert_eq!(zero_f, one_f.scalar_mult(&BigInt::zero()));
+        assert_eq!(zero_f, &one_f - &one_f);
+        assert_eq!(field.of(&three)?, &ten * &one_f);
+        assert_eq!(field.of(&six)?, &ten * &two_f);
+        assert_eq!(zero_f, BigInt::zero() * &one_f);
 
         // Field stuff
-        assert_eq!(two_f.mop(&one_f), two_f);
-        assert_eq!(one_f.mop(&two_f), two_f);
-        assert_eq!(two_f.mop(&two_f), four_f);
+        assert_eq!(&two_f * &one_f, two_f);
+        assert_eq!(&one_f * &two_f, two_f);
+        assert_eq!(&two_f * &two_f, four_f);
 
         assert_eq!(two_f.pow(&BigInt::one())?, two_f);
         assert_eq!(two_f.pow(&two)?, four_f);
-        println!("{} + {} = {}", four_f, four_f, four_f.gop(&four_f));
+        println!("{} + {} = {}", four_f, four_f, &four_f + &four_f);
         assert_eq!(one_f.pow(&three)?, one_f);
 
         // assert_eq!(seven, group.order().unwrap());
 
         assert_eq!(one_f, one_f.mop(&one_f.m_inv()?));
         println!("2^-1 = {}", two_f.m_inv()?);
-        assert_eq!(one_f, two_f.mop(&two_f.m_inv()?));
+        assert_eq!(one_f, &two_f / &two_f);
         println!("3^-1 = {}", three_f.m_inv()?);
-        assert_eq!(one_f, three_f.mop(&three_f.m_inv()?));
+        assert_eq!(one_f, &three_f / &three_f);
         Ok(())
     }
 
