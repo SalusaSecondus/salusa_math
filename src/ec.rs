@@ -1,19 +1,21 @@
 use std::{
     fmt::{Debug, Display},
     marker::PhantomData,
+    ops::{Add, Mul, Sub},
 };
 
 use crate::group::{Field, FieldElement, Group, GroupElement};
 use anyhow::{ensure, Result};
+use num::{BigInt, BigUint};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AffinePoint<FE>
+pub struct AffinePoint<FE>
 where
     FE: Clone + Debug,
 {
-    x: FE,
-    y: FE,
-    inf: bool,
+    pub x: FE,
+    pub y: FE,
+    pub inf: bool,
 }
 
 impl<FE> Display for AffinePoint<FE>
@@ -72,7 +74,9 @@ where
     }
 
     fn gop(&self, rhs: &Self) -> Self {
-        assert_eq!(self.curve, rhs.curve);
+        if self.curve.strict || rhs.curve.strict {
+            assert_eq!(self.curve, rhs.curve);
+        }
         if self.is_infinity() {
             return rhs.clone();
         }
@@ -80,7 +84,7 @@ where
             return self.clone();
         }
 
-        if self == &rhs.neg() {
+        if self == &rhs.gneg() {
             return self.curve.identity();
         }
 
@@ -96,29 +100,34 @@ where
             let bottom_inv = bottom.m_inv().unwrap();
             m = top.mop(&bottom_inv);
         } else {
-            let top = y2.gop(&y1.neg());
-            let bottom = x2.gop(&x1.neg());
+            let top = y2.gop(&y1.gneg());
+            let bottom = x2.gop(&x1.gneg());
             let bottom_inv = bottom.m_inv().unwrap();
             m = top.mop(&bottom_inv);
         }
-        
+
         let m_sq = m.mop(&m);
 
-        let x3 = m_sq.gop(&x1.neg()).gop(&x2.neg());
-        let x1_m_x3 = x1.gop(&x3.neg());
-        let y3 = m.mop(&x1_m_x3).gop(&y1.neg());
+        let x3 = m_sq.gop(&x1.gneg()).gop(&x2.gneg());
+        let x1_m_x3 = x1.gop(&x3.gneg());
+        let y3 = m.mop(&x1_m_x3).gop(&y1.gneg());
 
         let affine = AffinePoint {
-            x: x3, y: y3, inf: false
+            x: x3,
+            y: y3,
+            inf: false,
         };
-        EcPoint { affine, curve: self.curve.clone()}
+        EcPoint {
+            affine,
+            curve: self.curve.clone(),
+        }
     }
 
-    fn neg(&self) -> Self {
+    fn gneg(&self) -> Self {
         if self.is_infinity() {
             return self.clone();
         }
-        let neg_y = self.affine.y.neg();
+        let neg_y = self.affine.y.gneg();
         let neg_affine = AffinePoint {
             x: self.affine.x.clone(),
             y: neg_y,
@@ -128,6 +137,192 @@ where
             affine: neg_affine,
             curve: self.curve.clone(),
         }
+    }
+    
+    fn identity(&self) -> Self {
+        self.curve.identity()
+    }
+
+    
+}
+
+impl<F, FE, T, GE, ME> Add for EcPoint<F, FE, T, GE, ME>
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+{
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        self.gop(&rhs)
+    }
+}
+
+impl<F, FE, T, GE, ME> Add for &EcPoint<F, FE, T, GE, ME>
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+{
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        self.gop(&rhs)
+    }
+}
+
+impl<F, FE, T, GE, ME> Add<&EcPoint<F, FE, T, GE, ME>> for EcPoint<F, FE, T, GE, ME>
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+{
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn add(self, rhs: &EcPoint<F, FE, T, GE, ME>) -> Self::Output {
+        self.gop(&rhs)
+    }
+}
+
+impl<F, FE, T, GE, ME> Add<EcPoint<F, FE, T, GE, ME>> for &EcPoint<F, FE, T, GE, ME>
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+{
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn add(self, rhs: EcPoint<F, FE, T, GE, ME>) -> Self::Output {
+        self.gop(&rhs)
+    }
+}
+
+impl<F, FE, T, GE, ME> Sub for EcPoint<F, FE, T, GE, ME>
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+{
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.gop(&rhs.gneg())
+    }
+}
+
+impl<F, FE, T, GE, ME> Sub for &EcPoint<F, FE, T, GE, ME>
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+{
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.gop(&rhs.gneg())
+    }
+}
+
+impl<F, FE, T, GE, ME> Sub<&EcPoint<F, FE, T, GE, ME>> for EcPoint<F, FE, T, GE, ME>
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+{
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn sub(self, rhs: &EcPoint<F, FE, T, GE, ME>) -> Self::Output {
+        self.gop(&rhs.gneg())
+    }
+}
+
+impl<F, FE, T, GE, ME> Sub<EcPoint<F, FE, T, GE, ME>> for &EcPoint<F, FE, T, GE, ME>
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+{
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn sub(self, rhs: EcPoint<F, FE, T, GE, ME>) -> Self::Output {
+        self.gop(&rhs.gneg())
+    }
+}
+
+impl<F, FE, T, GE, ME> Mul<EcPoint<F, FE, T, GE, ME>> for BigInt
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+ {
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn mul(self, rhs: EcPoint<F, FE, T, GE, ME>) -> Self::Output {
+        rhs.scalar_mult(&self)
+    }
+}
+
+impl<F, FE, T, GE, ME> Mul<EcPoint<F, FE, T, GE, ME>> for &BigInt
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+ {
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn mul(self, rhs: EcPoint<F, FE, T, GE, ME>) -> Self::Output {
+        rhs.scalar_mult(self)
+    }
+}
+
+impl<F, FE, T, GE, ME> Mul<&EcPoint<F, FE, T, GE, ME>> for BigInt
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+ {
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn mul(self, rhs: &EcPoint<F, FE, T, GE, ME>) -> Self::Output {
+        rhs.scalar_mult(&self)
+    }
+}
+
+impl<F, FE, T, GE, ME> Mul<&EcPoint<F, FE, T, GE, ME>> for &BigInt
+where
+    F: Field<T, FE, GE, ME>,
+    FE: Eq + Clone + FieldElement<T, GE, ME>,
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+ {
+    type Output = EcPoint<F, FE, T, GE, ME>;
+
+    fn mul(self, rhs: &EcPoint<F, FE, T, GE, ME>) -> Self::Output {
+        rhs.scalar_mult(self)
     }
 }
 
@@ -153,9 +348,10 @@ where
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
-    a: FE,
-    b: FE,
+    pub a: FE,
+    pub b: FE,
     field: F,
+    pub strict: bool,
     _pt: PhantomData<T>,
     _pge: PhantomData<GE>,
     _pme: PhantomData<ME>,
