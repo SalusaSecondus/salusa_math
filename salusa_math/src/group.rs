@@ -6,8 +6,7 @@ use std::{
 
 use anyhow::{bail, ensure, Result};
 use num::{bigint::Sign, BigInt, One, Zero};
-#[macro_use]
-pub mod macros;
+use salusa_math_macros::GroupOps;
 
 
 pub trait GroupElement<T>: std::fmt::Debug + Sized + Clone + Eq
@@ -110,13 +109,13 @@ impl Group<BigInt, ZAddElement> for ZAddGroup {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, GroupOps)]
 pub struct ZAddElement {
     value: BigInt,
     group: ZAddGroup,
 }
 
-create_group_ops!(ZAddElement);
+// create_group_ops!(ZAddElement);
 
 impl GroupElement<BigInt> for ZAddElement {
     fn identity(&self) -> Self {
@@ -158,13 +157,12 @@ pub struct ZMultGroup {
     modulus: BigInt,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, GroupOps)]
 pub struct ZMultElement {
     value: BigInt,
     group: ZMultGroup,
 }
 
-create_group_ops!(ZMultElement);
 
 impl ZMultGroup {
     pub fn modulus(modulus: &BigInt) -> ZMultGroup {
