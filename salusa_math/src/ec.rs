@@ -413,8 +413,12 @@ where
         if val.inf {
             return true;
         }
+        let y = &val.y;
+        let x = &val.x;
+        let a = &self.a;
+        let b = &self.b;
 
-        let y_squared = val.y.mop(&val.y);
+        let y_squared = y * y;
         let x_squared = val.x.mop(&val.x);
         let x_cubed = val.x.mop(&x_squared);
 

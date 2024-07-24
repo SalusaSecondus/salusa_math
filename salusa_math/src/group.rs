@@ -1,15 +1,45 @@
 use std::{
     fmt::{Debug, Display},
     marker::PhantomData,
-    ops::Neg,
+    ops::{Add, Div, Mul, Neg, Sub},
 };
 
 use anyhow::{bail, ensure, Result};
 use num::{bigint::Sign, BigInt, One, Zero};
 use salusa_math_macros::{FieldOps, GroupOps};
 
+/// A helper trait for types with a group operation.
+pub trait GroupOps<Rhs = Self, Output = Self>:
+    Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> // + AddAssign<Rhs> + SubAssign<Rhs>
+{
+}
 
-pub trait GroupElement<T>: std::fmt::Debug + Sized + Clone + Eq
+impl<T, Rhs, Output> GroupOps<Rhs, Output> for T where
+    T: Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> // + AddAssign<Rhs> + SubAssign<Rhs>
+{
+}
+
+/// A helper trait for references with a group operation.
+pub trait GroupOpsOwned<Rhs = Self, Output = Self>: for<'r> GroupOps<&'r Rhs, Output> {}
+impl<T, Rhs, Output> GroupOpsOwned<Rhs, Output> for T where T: for<'r> GroupOps<&'r Rhs, Output> {}
+
+/// A helper trait for types with a field operation.
+pub trait FieldOps<Rhs = Self, Output = Self>:
+    Mul<Rhs, Output = Output> + Div<Rhs, Output = Output> // + MulAssign<Rhs> + DivAssign<Rhs>
+{
+}
+
+impl<T, Rhs, Output> FieldOps<Rhs, Output> for T where
+    T: Mul<Rhs, Output = Output> + Div<Rhs, Output = Output> // + MulAssign<Rhs> + DivAssign<Rhs>
+{
+}
+
+/// A helper trait for references with a field operation.
+pub trait FieldOpsOwned<Rhs = Self, Output = Self>: for<'r> FieldOps<&'r Rhs, Output> {}
+impl<T, Rhs, Output> FieldOpsOwned<Rhs, Output> for T where T: for<'r> FieldOps<&'r Rhs, Output> {}
+
+
+pub trait GroupElement<T>: std::fmt::Debug + Sized + Clone + Eq + GroupOps + GroupOpsOwned
 where
     T: Eq,
 {
@@ -275,7 +305,7 @@ where
     }
 }
 
-pub trait FieldElement<T, F, GE, ME>: GroupElement<T>
+pub trait FieldElement<T, F, GE, ME>: GroupElement<T> + FieldOps + FieldOpsOwned
 where
     T: Eq,
     F: Field<T, Self, GE, ME>,
