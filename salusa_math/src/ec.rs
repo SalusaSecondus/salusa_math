@@ -418,7 +418,7 @@ where
         let a = &self.a;
         let b = &self.b;
 
-        let y_squared = y * y;
+        let y_squared = y.mop(&y);
         let x_squared = val.x.mop(&val.x);
         let x_cubed = val.x.mop(&x_squared);
 
@@ -467,7 +467,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use num::Num;
+    use num::{Num, One};
 
     use crate::group::ZField;
 
@@ -493,6 +493,10 @@ mod tests {
         println!("{} * {} = {}", curve.order().unwrap(), g, result);
         assert_eq!(result, inf);
         assert!(result.is_infinity());
+
+        let result = (curve.order().unwrap() - BigInt::one()) * &g;
+        println!("{}", result);
+        println!("{}", &result + &g);
         Ok(())
     }
 }
