@@ -53,7 +53,7 @@ where
     fn contains(&self, val: &T) -> bool;
     fn of(&self, val: &T) -> Result<GE>;
     fn wrap(&self, val: T) -> Result<GE>;
-    fn order(&self) -> Option<BigInt>;
+    fn order(&self) -> Option<&BigInt>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,8 +74,8 @@ impl Group<BigInt, ZAddElement> for ZAddGroup {
         val.sign() != Sign::Minus && val < &self.modulus
     }
 
-    fn order(&self) -> Option<BigInt> {
-        Some(self.modulus.clone())
+    fn order(&self) -> Option<&BigInt> {
+        Some(&self.modulus)
     }
 
     fn identity(&self) -> ZAddElement {
@@ -201,7 +201,7 @@ impl Group<BigInt, ZMultElement> for ZMultGroup {
         }
     }
 
-    fn order(&self) -> Option<BigInt> {
+    fn order(&self) -> Option<&BigInt> {
         todo!()
     }
 }
@@ -252,7 +252,7 @@ impl GroupElement<BigInt> for ZMultElement {
 pub trait Field<T, FE, GE, ME>: Group<T, FE>
 where
     T: Eq,
-    FE: FieldElement<T, GE, ME>,
+    FE: FieldElement<T, Self, GE, ME>,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
@@ -275,13 +275,14 @@ where
     }
 }
 
-pub trait FieldElement<T, GE, ME>: GroupElement<T>
+pub trait FieldElement<T, F, GE, ME>: GroupElement<T>
 where
     T: Eq,
+    F: Field<T, Self, GE, ME>,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
-    fn field(&self) -> &impl Field<T, Self, GE, ME>;
+    fn field(&self) -> &F;
 
     fn mop(&self, rhs: &Self) -> Self {
         assert_eq!(self.field(), rhs.field());
@@ -387,7 +388,7 @@ where
 }
 }
 
-impl<T, F, GE, ME> FieldElement<T, GE, ME> for GenericFieldElement<T, F, GE, ME>
+impl<T, F, GE, ME> FieldElement<T, F, GE, ME> for GenericFieldElement<T, F, GE, ME>
 where
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
@@ -429,9 +430,12 @@ impl Group<BigInt, GenericFieldElement<BigInt, Self, ZAddElement, ZMultElement>>
         &self,
         val: &BigInt,
     ) -> Result<GenericFieldElement<BigInt, Self, ZAddElement, ZMultElement>> {
-        ensure!(self.contains(val));
+        let mut clamped = val % &self.add_group.modulus;
+        if clamped.sign() == Sign::Minus {
+            clamped += &self.add_group.modulus;
+        }
         Ok(GenericFieldElement {
-            value: val.to_owned(),
+            value: clamped,
             field: self.clone(),
             phantom_1: PhantomData,
             phantom_2: PhantomData,
@@ -442,17 +446,20 @@ impl Group<BigInt, GenericFieldElement<BigInt, Self, ZAddElement, ZMultElement>>
         &self,
         val: BigInt,
     ) -> Result<GenericFieldElement<BigInt, Self, ZAddElement, ZMultElement>> {
-        ensure!(self.contains(&val));
+        let mut clamped = val % &self.add_group.modulus;
+        if clamped.sign() == Sign::Minus {
+            clamped += &self.add_group.modulus;
+        }
         Ok(GenericFieldElement {
-            value: val,
+            value: clamped,
             field: self.clone(),
             phantom_1: PhantomData,
             phantom_2: PhantomData,
         })
     }
 
-    fn order(&self) -> Option<BigInt> {
-        todo!()
+    fn order(&self) -> Option<&BigInt> {
+        self.add_group.order()
     }
 }
 
@@ -571,7 +578,7 @@ mod tests {
         assert_eq!(&one + &zero, one);
         assert_eq!(&one + &one, two);
 
-        assert_eq!(seven, group.order().unwrap());
+        assert_eq!(seven, *group.order().unwrap());
 
         assert_eq!(zero, &one - &one);
         assert_eq!(group.of(&three)?, &ten * &one);
