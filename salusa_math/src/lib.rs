@@ -1,7 +1,11 @@
+use std::sync::OnceLock;
+
 use anyhow::{bail, ensure, Context, Result};
 use num::{BigInt, BigUint, One as _, Zero as _};
 use num_bigint::{RandBigInt as _, Sign, ToBigInt as _};
+use num_traits::ConstZero;
 use rand_core::OsRng;
+use lazy_static::lazy_static;
 
 pub mod group;
 pub mod ec;
@@ -119,14 +123,18 @@ pub fn mod_exp(base: &BigUint, exp: &BigUint, modulo: &BigUint) -> BigUint {
         return base.clone();
     }
 
-    let sqrt = exp >> 1;
-    let result = mod_exp(base, &sqrt, modulo);
-    let result = &result * &result;
-    if exp.bit(0) {
-        (result * base) % modulo
-    } else {
-        result % modulo
+    let mut r0 = BigUint::one();
+    let mut r1 = base % modulo;
+    for i in (0..=exp.bits()).rev() {
+        if exp.bit(i) {
+            r0 = (r0 * &r1) % modulo;
+            r1 = (&r1 * &r1) % modulo;
+        } else {
+            r1 = (&r0 * &r1) % modulo;
+            r0 = (&r0 * &r0) % modulo;
+        }
     }
+    r0
 }
 
 pub fn crt(factors: &[(BigUint, BigUint)]) -> Result<BigUint> {
@@ -155,6 +163,65 @@ pub fn crt(factors: &[(BigUint, BigUint)]) -> Result<BigUint> {
     }
 
     Ok(current.0)
+}
+
+pub fn euler_criterion(n: &BigInt, k: &BigInt) -> i8 {
+    if n.is_zero() {
+        return 0;
+    }
+    let exp = (k - BigInt::one()) >> 1;
+    if n.modpow(&exp, k).is_one() {
+        1
+    } else {
+        -1
+    }
+}
+
+pub fn mod_sqrt(n: &BigInt, p: &BigInt) -> Result<BigInt> {
+    ensure!(euler_criterion(n, p).is_one());
+
+    let p_minus = p - BigInt::one();
+
+        let s = p_minus.trailing_zeros().context("p may not be one")?;
+        let q = &p_minus >> s;
+
+        let mut z= OsRng.gen_bigint_range(&BigInt::ZERO, p);
+        while euler_criterion(&z, p).is_one() {
+            z = OsRng.gen_bigint_range(&BigInt::ZERO, p);
+        }
+        // println!("z = {} -> {}", z, euler_criterion(&z, p));
+        let one = BigInt::one();
+        let mut m = s;
+        let mut c = z.modpow(&q, p);
+        let mut t = n.modpow(&q, p);
+        let mut r = n.modpow(&((&q + &BigInt::one()) >> 1), p);
+        
+        loop {
+            // println!("m = {}, c = {}, t = {}, r = {}", m, c, t, r);
+            if t.is_zero() {
+                bail!("n is not a quadratic residue")
+            }
+            if t.is_one() {
+                return Ok(r);
+            }
+            let mut i = 0;
+            let mut t_pow = t.clone();
+            loop {
+                i += 1;
+                t_pow = (&t_pow * &t_pow) % p;
+                if t_pow.is_one() {
+                    // println!("{} - {} - 1", m, i);
+                    let exp = &one << (m - i - 1);
+                    let b = c.modpow(&exp, p);
+                    // println!("b = {}", b);
+                    m = i;
+                    c = (&b * &b) % p;
+                    t = (t * &c) % p;
+                    r = (r * &b) % p;
+                    break;
+                }
+            }
+        }
 }
 
 #[cfg(test)]
@@ -235,4 +302,11 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_mod_sqrt() -> Result<()> {
+        let result = mod_sqrt(&BigInt::from(5), &BigInt::from(41))?;
+        let square = (&result * &result) % BigInt::from(41);
+        assert_eq!(BigInt::from(5), square);
+        Ok(())
+    }
 }

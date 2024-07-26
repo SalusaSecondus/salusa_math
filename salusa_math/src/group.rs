@@ -48,6 +48,7 @@ where
     fn gop(&self, rhs: &Self) -> Self;
     fn gneg(&self) -> Self;
     fn identity(&self) -> Self;
+    fn to_bytes(&self) -> Vec<u8>;
 
     fn scalar_mult(&self, mult: &BigInt) -> Self {
         let mut r0 = self.identity();
@@ -172,6 +173,10 @@ impl GroupElement<BigInt> for ZAddElement {
         let raw_result = self.raw().neg();
         self.group.wrap(raw_result + &self.group.modulus).unwrap()
     }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        self.raw().to_bytes_be().1
+    }
 }
 
 impl Display for ZAddElement {
@@ -243,7 +248,6 @@ impl Display for ZMultElement {
 }
 
 impl GroupElement<BigInt> for ZMultElement {
-    
     fn raw(&self) -> &BigInt {
         &self.value
     }
@@ -276,6 +280,10 @@ impl GroupElement<BigInt> for ZMultElement {
             Sign::Minus => self.group.wrap(x + modulo).unwrap(),
             _ => panic!("Impossible result"),
         }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        self.raw().to_bytes_be().1
     }
 }
 
@@ -415,7 +423,11 @@ where
 
     fn gneg(&self) -> Self {
         self.field.wrap(self.add_element().gneg().consume()).unwrap()
-}
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        self.add_element().to_bytes()
+    }
 }
 
 impl<T, F, GE, ME> FieldElement<T, F, GE, ME> for GenericFieldElement<T, F, GE, ME>

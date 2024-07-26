@@ -10,4 +10,5 @@ num-bigint = { version = "0.4", features = ["rand"] }
 num-traits = "0.2.14"
 rand = {version = "0.8.0", features = ["getrandom"]}
 rand_core = {version = "0.6.0", features = ["getrandom"]}
+lazy_static = "1.5"
 salusa_math_macros = { path = "../salusa_math_macros" }
