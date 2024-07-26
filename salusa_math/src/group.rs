@@ -124,7 +124,7 @@ impl Group<BigInt, ZAddElement> for ZAddGroup {
                 group: self.clone(),
             })
         } else {
-            bail!("{:?} is not a group element", val);
+            bail!("{:?} is not a group element mod {}", val, self.modulus);
         }
     }
 
@@ -135,7 +135,7 @@ impl Group<BigInt, ZAddElement> for ZAddGroup {
                 group: self.clone(),
             })
         } else {
-            bail!("{:?} is not a group element", val);
+            bail!("{:?} is not a group element mod {}", val, self.modulus);
         }
     }
 }
@@ -170,6 +170,9 @@ impl GroupElement<BigInt> for ZAddElement {
     }
 
     fn gneg(&self) -> Self {
+        if self.value.is_zero() {
+            return self.clone();
+        }
         let raw_result = self.raw().neg();
         self.group.wrap(raw_result + &self.group.modulus).unwrap()
     }
@@ -272,6 +275,9 @@ impl GroupElement<BigInt> for ZMultElement {
     }
 
     fn gneg(&self) -> Self {
+        if self.value.is_one() {
+            return self.clone();
+        }
         let modulo = &self.group.modulus;
         let (gcd, x, _) = gcd(self.raw(), modulo);
         assert!(gcd.is_one());

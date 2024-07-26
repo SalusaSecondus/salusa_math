@@ -1,11 +1,7 @@
-use std::sync::OnceLock;
-
 use anyhow::{bail, ensure, Context, Result};
 use num::{BigInt, BigUint, One as _, Zero as _};
 use num_bigint::{RandBigInt as _, Sign, ToBigInt as _};
-use num_traits::ConstZero;
 use rand_core::OsRng;
-use lazy_static::lazy_static;
 
 pub mod group;
 pub mod ec;

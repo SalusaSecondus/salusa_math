@@ -7,7 +7,6 @@ use std::{
 use crate::{group::{Field, FieldElement, Group, GroupElement}, mod_sqrt};
 use anyhow::{ensure, Context, Result};
 use num::BigInt;
-use num_bigint::Sign;
 use salusa_math_macros::GroupOps;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,6 +174,10 @@ where
     pub fn is_infinity(&self) -> bool {
         self.affine.inf
     }
+
+    pub fn curve(&self) -> &EcCurve<F, FE, T, GE, ME> {
+        &self.curve
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,7 +291,7 @@ where
     }
 
     fn of(&self, val: &AffinePoint<FE>) -> Result<EcPoint<F, FE, T, GE, ME>> {
-        ensure!(self.strict && self.contains(val));
+        ensure!(!self.strict || self.contains(val));
 
         Ok(EcPoint {
             affine: val.clone(),
@@ -297,7 +300,7 @@ where
     }
 
     fn wrap(&self, val: AffinePoint<FE>) -> Result<EcPoint<F, FE, T, GE, ME>> {
-        ensure!(self.strict && self.contains(&val));
+        ensure!(!self.strict || self.contains(&val));
 
         Ok(EcPoint {
             affine: val,
@@ -327,7 +330,6 @@ where
 mod tests {
     use num::{Num, One};
     use num_bigint::RandBigInt;
-    use num_traits::ConstZero;
     use rand_core::OsRng;
 
     use crate::group::ZField;
