@@ -317,6 +317,10 @@ where
     fn ge2fe_wrap(&self, ge: GE) -> Result<FE> {
         self.wrap(ge.consume())
     }
+
+    fn mult_identity(&self) -> FE {
+        self.me2fe_wrap(self.mult_group().identity()).unwrap()
+    }
 }
 
 pub trait FieldElement<T, F, GE, ME>: GroupElement<T> + FieldOps + FieldOpsOwned

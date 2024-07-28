@@ -1,4 +1,7 @@
+use std::fmt::{Debug, Display};
+
 use anyhow::{bail, ensure, Context, Result};
+use group::{Field, FieldElement, Group, GroupElement};
 use num::{BigInt, BigUint, One as _, Zero as _};
 use num_bigint::{RandBigInt as _, Sign, ToBigInt as _};
 use rand_core::OsRng;
@@ -173,27 +176,58 @@ pub fn euler_criterion(n: &BigInt, k: &BigInt) -> i8 {
     }
 }
 
-pub fn mod_sqrt(n: &BigInt, p: &BigInt) -> Result<BigInt> {
-    ensure!(euler_criterion(n, p).is_one());
+pub fn euler_criterion_fe<T, F, FE, GE, ME>(n: &FE) -> i8
+where 
+T: Clone + Debug + Eq,
+F: Field<T, FE, GE, ME>,
+FE: FieldElement<T, F, GE, ME>,
+GE: GroupElement<T>,
+ME: GroupElement<T>,
+ {
+    if n.is_zero() {
+        return 0;
+    }
+    let exp = (n.field().order().unwrap() - BigInt::one()) >> 1;
+    if n.pow(&exp).unwrap().is_one() {
+        1
+    } else {
+        -1
+    }
+}
 
+pub fn mod_sqrt<T, F, FE, GE, ME>(n: &FE) -> Result<FE>
+where 
+T: Clone + Debug + Eq,
+F: Field<T, FE, GE, ME>,
+FE: FieldElement<T, F, GE, ME>,
+GE: GroupElement<T>,
+ME: GroupElement<T>,
+{
+    let field = n.field();
+    let p = field.order().context("Order required")?;
     let p_minus = p - BigInt::one();
 
-        let s = p_minus.trailing_zeros().context("p may not be one")?;
-        let q = &p_minus >> s;
+    let s = p_minus.trailing_zeros().context("p may not be one")?;
+    let q = &p_minus >> s;
 
-        let mut z= OsRng.gen_bigint_range(&BigInt::ZERO, p);
-        while euler_criterion(&z, p).is_one() {
-            z = OsRng.gen_bigint_range(&BigInt::ZERO, p);
+    let one_f = field.me2fe_wrap(field.mult_group().identity())?;
+    let neg_one_f = one_f.gneg();
+    let neg_two_f = one_f.gop(&neg_one_f);    
+    let neg_four_f = neg_two_f.gop(&neg_two_f);    
+
+        let mut z= neg_four_f;
+        while euler_criterion_fe(&z) != -1 {
+            z = z.gop(&one_f);
         }
-        // println!("z = {} -> {}", z, euler_criterion(&z, p));
+
         let one = BigInt::one();
         let mut m = s;
-        let mut c = z.modpow(&q, p);
-        let mut t = n.modpow(&q, p);
-        let mut r = n.modpow(&((&q + &BigInt::one()) >> 1), p);
+        let mut c = z.pow(&q)?;
+        let mut t = n.pow(&q)?;
+        let mut r = n.pow(&((&q + &BigInt::one()) >> 1))?;
         
         loop {
-            // println!("m = {}, c = {}, t = {}, r = {}", m, c, t, r);
+            // println!("m = {}, c = {:?}, t = {:?}, r = {:?}", m, c, t, r);
             if t.is_zero() {
                 bail!("n is not a quadratic residue")
             }
@@ -204,16 +238,16 @@ pub fn mod_sqrt(n: &BigInt, p: &BigInt) -> Result<BigInt> {
             let mut t_pow = t.clone();
             loop {
                 i += 1;
-                t_pow = (&t_pow * &t_pow) % p;
+                t_pow = t_pow.mop(&t_pow);
                 if t_pow.is_one() {
                     // println!("{} - {} - 1", m, i);
                     let exp = &one << (m - i - 1);
-                    let b = c.modpow(&exp, p);
+                    let b = c.pow(&exp)?;
                     // println!("b = {}", b);
                     m = i;
-                    c = (&b * &b) % p;
-                    t = (t * &c) % p;
-                    r = (r * &b) % p;
+                    c = b.mop(&b);
+                    t = t.mop(&c);
+                    r = r.mop(&b);
                     break;
                 }
             }
@@ -222,6 +256,8 @@ pub fn mod_sqrt(n: &BigInt, p: &BigInt) -> Result<BigInt> {
 
 #[cfg(test)]
 mod tests {
+    use group::ZField;
+
     use super::*;
 
     #[test]
@@ -300,9 +336,12 @@ mod tests {
 
     #[test]
     fn test_mod_sqrt() -> Result<()> {
-        let result = mod_sqrt(&BigInt::from(5), &BigInt::from(41))?;
-        let square = (&result * &result) % BigInt::from(41);
-        assert_eq!(BigInt::from(5), square);
+        let field = ZField::modulus(&41i32.into());
+        let five = field.wrap(5i32.into())?;
+        let result = mod_sqrt(&five)?;
+        println!("sqrt({} mod {}) =? {}", five, field.add_group().order().unwrap(), result);
+        let square = result.mop(&result);
+        assert_eq!(five, square);
         Ok(())
     }
 }

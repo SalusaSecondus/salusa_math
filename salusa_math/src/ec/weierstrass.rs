@@ -4,9 +4,16 @@ use std::{
     ops::Neg,
 };
 
-use crate::{group::{Field, FieldElement, Group, GroupElement}, mod_sqrt};
+use crate::{
+    group::{
+        Field, FieldElement, GenericFieldElement, Group, GroupElement, ZAddElement, ZField,
+        ZMultElement,
+    },
+    mod_sqrt,
+};
 use anyhow::{ensure, Context, Result};
-use num::BigInt;
+use lazy_static::lazy_static;
+use num::{BigInt, Num};
 use salusa_math_macros::GroupOps;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,7 +40,8 @@ where
 }
 
 impl<FE> AffinePoint<FE>
-where FE: Clone + Debug
+where
+    FE: Clone + Debug,
 {
     pub fn new(x: FE, y: FE) -> Self {
         AffinePoint { x, y, inf: false }
@@ -147,7 +155,7 @@ where
             curve: self.curve.clone(),
         }
     }
-    
+
     fn identity(&self) -> Self {
         self.curve.identity()
     }
@@ -213,7 +221,16 @@ where
 
     pub fn new_with_strict(a: FE, b: FE, order: Option<BigInt>, strict: bool) -> Self {
         assert_eq!(a.field(), b.field());
-        EcCurve { a, b, order, strict, _pf: PhantomData::default(), _pt: PhantomData::default(), _pge: PhantomData::default(), _pme: PhantomData::default() }
+        EcCurve {
+            a,
+            b,
+            order,
+            strict,
+            _pf: PhantomData::default(),
+            _pt: PhantomData::default(),
+            _pge: PhantomData::default(),
+            _pme: PhantomData::default(),
+        }
     }
 
     pub fn field(&self) -> &F {
@@ -233,17 +250,17 @@ where
         let x_cubed = x.mop(&x).mop(&x);
         let a_x = self.a.mop(&x);
         let rhs = x_cubed.gop(&a_x).gop(&self.b);
-        let order = self.field().order().context("Missing order")?;
-        let mut y = mod_sqrt(rhs.raw(), &order)?;
+        let mut y = mod_sqrt(&rhs)?;
+        let actual_y_bit = (y.to_bytes().iter().last().unwrap() & 0x01) == 1;
 
-        if y.bit(0) != y_bit {
-            y = order - y;
+        if actual_y_bit != y_bit {
+            y = y.gneg();
         }
-        let y = self.field().wrap(y)?;
-        let affine = AffinePoint {
-            x, y, inf: false
+        let affine = AffinePoint { x, y, inf: false };
+        let point = EcPoint {
+            affine,
+            curve: self.clone(),
         };
-        let point = EcPoint{ affine, curve: self.clone()};
 
         Ok(point)
     }
@@ -326,6 +343,39 @@ where
     }
 }
 
+lazy_static! {
+    static ref CRYPTO_PALS_WEIERSTRASS: EcCurve<
+        ZField,
+        GenericFieldElement<BigInt, ZField, ZAddElement, ZMultElement>,
+        BigInt,
+        ZAddElement,
+        ZMultElement,
+    > = {
+        let gf = ZField::modulus(
+            &BigInt::from_str_radix("233970423115425145524320034830162017933", 10).unwrap(),
+        );
+        let a = gf.wrap((-95051i32).into()).unwrap();
+        let b = gf.wrap(11279326i32.into()).unwrap();
+        let order = BigInt::from_str_radix("29246302889428143187362802287225875743", 10).unwrap();
+        EcCurve::new(a, b, Some(order))
+    };
+    static ref CRYPTO_PALS_WEIERSTRASS_G: EcPoint<
+        ZField,
+        GenericFieldElement<BigInt, ZField, ZAddElement, ZMultElement>,
+        BigInt,
+        ZAddElement,
+        ZMultElement,
+    > = CRYPTO_PALS_WEIERSTRASS
+        .wrap(AffinePoint::new(
+            CRYPTO_PALS_WEIERSTRASS.field().wrap(182u32.into()).unwrap(),
+            CRYPTO_PALS_WEIERSTRASS
+                .field()
+                .wrap(85518893674295321206118380980485522083u128.into())
+                .unwrap()
+        ))
+        .unwrap();
+}
+
 #[cfg(test)]
 mod tests {
     use num::{Num, One};
@@ -338,47 +388,38 @@ mod tests {
 
     #[test]
     fn smoke() -> Result<()> {
-        let gf = ZField::modulus(&BigInt::from_str_radix("233970423115425145524320034830162017933", 10)?);
-        let a = gf.wrap((-95051i32).into())?;
-        let b = gf.wrap(11279326i32.into())?;
-        let order = BigInt::from_str_radix("29246302889428143187362802287225875743", 10)?;
-        let curve = EcCurve::new(a, b, Some(order));
+        println!("{}", *CRYPTO_PALS_WEIERSTRASS);
 
-        println!("{}", curve);
+        let inf = CRYPTO_PALS_WEIERSTRASS.identity();
 
-        let inf = curve.identity();
-        
-        let g = curve.wrap(
-            AffinePoint::new(gf.wrap(182u32.into())?, gf.wrap(85518893674295321206118380980485522083u128.into())?)
-        )?;
-
-        let result = curve.order().unwrap() * &g;
-        println!("{} * {} = {}", curve.order().unwrap(), g, result);
+        let result =
+            CRYPTO_PALS_WEIERSTRASS_G.scalar_mult(&CRYPTO_PALS_WEIERSTRASS.order().unwrap());
+        println!(
+            "{} * {} = {}",
+            CRYPTO_PALS_WEIERSTRASS.order().unwrap(),
+            *CRYPTO_PALS_WEIERSTRASS_G,
+            result
+        );
         assert_eq!(result, inf);
         assert!(result.is_infinity());
 
-        let result = (curve.order().unwrap() - BigInt::one()) * &g;
+        let result = CRYPTO_PALS_WEIERSTRASS_G
+            .scalar_mult(&(CRYPTO_PALS_WEIERSTRASS.order().unwrap() - BigInt::one()));
         println!("{}", result);
-        println!("{}", &result + &g);
+        println!("{}", result.gop(&CRYPTO_PALS_WEIERSTRASS_G));
         Ok(())
     }
 
     #[test]
     fn decompression() -> Result<()> {
-        let gf = ZField::modulus(&BigInt::from_str_radix("233970423115425145524320034830162017933", 10)?);
-        let a = gf.wrap((-95051i32).into())?;
-        let b = gf.wrap(11279326i32.into())?;
-        let order = BigInt::from_str_radix("29246302889428143187362802287225875743", 10)?;
-        let curve = EcCurve::new(a, b, Some(order.clone()));
+        let order = CRYPTO_PALS_WEIERSTRASS.order().unwrap();
 
-        let g = curve.wrap(
-            AffinePoint::new(gf.wrap(182u32.into())?, gf.wrap(85518893674295321206118380980485522083u128.into())?)
-        )?;
-
-        let rnd_point = OsRng.gen_bigint_range(&BigInt::ZERO, &order) * &g;
+        let rnd_point =
+            CRYPTO_PALS_WEIERSTRASS_G.scalar_mult(&OsRng.gen_bigint_range(&BigInt::ZERO, order));
         let y_bit = rnd_point.raw().y.raw().bit(0);
 
-        let recovered = curve.decompress(rnd_point.raw().x.raw().clone(), y_bit)?;
+        let recovered =
+            CRYPTO_PALS_WEIERSTRASS.decompress(rnd_point.raw().x.raw().clone(), y_bit)?;
 
         assert_eq!(recovered, rnd_point);
 
