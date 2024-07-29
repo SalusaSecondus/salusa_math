@@ -34,6 +34,13 @@ mod tests {
         assert_eq!(one_m, one_m.scalar_mult(&BigInt::one()));
         assert_eq!(two_m, one_m.scalar_mult(&BigInt::from(2i32)));
         assert_eq!(three_m, one_m.scalar_mult(&BigInt::from(3i32)));
+
+        let inf_w = one_w.scalar_mult(CRYPTO_PALS_WEIERSTRASS.order().unwrap());
+        let inf_m = one_m.scalar_mult(CRYPTO_PALS_MONTGOMERY.order().unwrap());
+
+        println!("{}, {}", inf_w, inf_m);
+        assert!(inf_w.is_infinity());
+        assert!(inf_m.is_infinity());
         Ok(())
     }
 

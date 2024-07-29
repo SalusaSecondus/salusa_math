@@ -536,28 +536,29 @@ lazy_static! {
 
 #[cfg(test)]
 mod tests {
-    use crate::ec::{montgomery, weierstrass::CRYPTO_PALS_WEIERSTRASS_G};
+    use num::One as _;
 
     use super::*;
 
     #[test]
     fn smoke() -> Result<()> {
         println!("{}", *CRYPTO_PALS_MONTGOMERY);
-        let inf = CRYPTO_PALS_MONTGOMERY.identity();
-        println!("{}", inf);
-        let tmp = CRYPTO_PALS_MONTGOMERY_G.scalar_mult(CRYPTO_PALS_MONTGOMERY.order().unwrap());
-        println!("{}", tmp);
-        println!("Order = {}", CRYPTO_PALS_MONTGOMERY.order().unwrap());
-        assert!(tmp.is_infinity());
 
-        let offset = CRYPTO_PALS_MONTGOMERY.field().wrap(178i32.into())?;
-        let mult = BigInt::from(1);
-        let affine = CRYPTO_PALS_WEIERSTRASS_G.scalar_mult(&mult);
-        let montgomery = CRYPTO_PALS_MONTGOMERY_G.scalar_mult(&mult);
+        let result =
+        CRYPTO_PALS_MONTGOMERY_G.scalar_mult(&CRYPTO_PALS_MONTGOMERY.order().unwrap());
+        println!(
+            "{} * {} = {}",
+            CRYPTO_PALS_MONTGOMERY.order().unwrap(),
+            *CRYPTO_PALS_MONTGOMERY_G,
+            result
+        );
+        println!("{:?}", result);
+        assert!(result.is_infinity());
 
-        println!("{} ?= {}", affine, montgomery);
-
-        assert_eq!(affine.x() - offset, *montgomery.u());
+        let result = CRYPTO_PALS_MONTGOMERY_G
+            .scalar_mult(&(CRYPTO_PALS_MONTGOMERY.order().unwrap() - BigInt::one()));
+        println!("{}", result);
+        println!("{}", result.gop(&CRYPTO_PALS_MONTGOMERY_G));
         Ok(())
     }
 
