@@ -256,63 +256,30 @@ where
     }
 
     fn scalar_mult(&self, k: &BigInt) -> Self {
-        let u = self.point.u.clone();
-        let field = u.field();
-        let a = &self.curve.a;
+        let x1 = &self.point.u;
+        let p = x1.field().order().unwrap();
+        let p_minus2 = p - BigInt::from(2);
 
-        let zero = field.identity();
-        let one = field.mult_identity();
+        let mut x2 = x1.field().mult_identity();
+        let mut z2 = x1.field().identity();
+        let mut x3 = x1.field().identity();
+        let mut z3 = x1.field().mult_identity();
 
-        let mut u2 = one.clone();
-        let mut w2 = zero;
-        let mut u3 = u.clone();
-        let mut w3 = one;
-        
-        let p = field.order().unwrap();
-        let two = BigInt::from(2i32);
-        let p_minus_two = p - &two;
-        let four = BigInt::from(4i32);
+        println!("({:?}, {:?}) ({:?}, {:?})", x2.raw(), z2.raw(), x3.raw(), z3.raw());
 
+        let mut prev_bit = false;
         for i in (0..p.bits()).rev() {
-            println!("i = {}", i);
-            let b = k.bit(i);
-            println!("\tSwap? {}", b);
+            let bit = k.bit(i);
+            let b = bit ^ prev_bit;
+            prev_bit = bit;
 
-            println!("(u2, w2) = ({:?}, {:?})", u2.raw(), w2.raw());
-            println!("(u3, w3) = ({:?}, {:?})", u3.raw(), w3.raw());
-            (u2, u3) = cswap(u2, u3, b);
-            (w2, w3) = cswap(w2, w3, b);
-            println!("(u2, w2) = ({:?}, {:?})", u2.raw(), w2.raw());
-            println!("(u3, w3) = ({:?}, {:?})", u3.raw(), w3.raw());
-            (u3, w3) = ((&u2 * &u3 - &w2 * &w3).pow(&two),
-                        &u * (&u2 * &w3 - &w2 * &u3).pow(&two));
-
-            println!("(u2, w2)!= ({:?}, {:?})", u2.raw(), w2.raw());
-            println!("(u3, w3)!= ({:?}, {:?})", u3.raw(), w3.raw());
-            (u2, w3) = ((u2.pow(&two) - w2.pow(&two)).pow(&two),
-                        &four*&u2*&w2 * (u2.pow(&two) + a*&u2*&w2 + w2.pow(&two)));
-
-            (u2, u3) = cswap(u2, u3, b);
-            (w2, w3) = cswap(w2, w3, b);
-            println!("(u2, w2) = ({:?}, {:?})", u2.raw(), w2.raw());
-            println!("(u3, w3) = ({:?}, {:?})", u3.raw(), w3.raw());
-            println!("w2 is zero = {:?}", w2.is_zero());
-            
-            let new_u = &u2 * w2.pow(&p_minus_two);
-            println!("\tnew_u = {:?}", new_u.raw());
+            ((x2, z2), (x3, z3)) = cswap((x2, z2), (x3, z3), b);
+            ((x2, z2), (x3, z3)) = self.curve.ladder_step(x2, z2, x3, z3, x1);
         }
-        let new_u = &u2 * w2.pow(&p_minus_two);
-
+        
+        let new_u = x2 * z3.pow(&p_minus2);
         let inf = new_u.is_zero();
-        let new_point = MontgomeryPoint {
-            u: new_u,
-            v: None,
-            inf,
-        };
-        EcPoint {
-            point: new_point,
-            curve: self.curve.clone(),
-        }
+        Self { point: MontgomeryPoint { u: new_u, v: None, inf}, curve: self.curve.clone() }
     }
 }
 
@@ -423,6 +390,36 @@ where
         };
 
         Ok(point)
+    }
+
+    fn ladder_step(&self, x2: GenericFieldElement<T, F, GE, ME>, z2: GenericFieldElement<T, F, GE, ME>, x3: GenericFieldElement<T, F, GE, ME>, z3: GenericFieldElement<T, F, GE, ME>, x1: &GenericFieldElement<T, F, GE, ME>) ->
+    ((GenericFieldElement<T, F, GE, ME>, GenericFieldElement<T, F, GE, ME>), (GenericFieldElement<T, F, GE, ME>, GenericFieldElement<T, F, GE, ME>)) {
+        let one = x2.field().mult_identity();
+        let two = &one + &one;
+        let four = &two + &two;
+        let a_plus_2 = &self.a + &two;
+        let a24 = &a_plus_2 / &four;
+
+        let t1 = &x2 + &z2;
+        let t2 = &x2 - &z2;
+        let t3 = &x3 + &z3;
+        let t4 = &x3 - &z3;
+        let t5 = &t1 * &t1;
+        let t6 = &t2 * &t2;
+        let t2 = t2 * t3;
+        let t1 = t1 * t4;
+        let t1 = t1 + &t2;
+        let t2 = &t1 - &t2;
+        let x3 = &t1 * &t1;
+        let t2 = &t2 * &t2;
+        let z3 = &t2 * x1;
+        let x2 = &t5 * &t6;
+        let t5 = t5 - &t6;
+        let t1 = a24 * &t5;
+        let t6 = t6 + t1;
+        let z2 = t5 * t6;
+
+        ((x2, z2), (x3, z3))
     }
 }
 
@@ -550,6 +547,7 @@ mod tests {
         println!("{}", inf);
         let tmp = CRYPTO_PALS_MONTGOMERY_G.scalar_mult(CRYPTO_PALS_MONTGOMERY.order().unwrap());
         println!("{}", tmp);
+        println!("Order = {}", CRYPTO_PALS_MONTGOMERY.order().unwrap());
         assert!(tmp.is_infinity());
 
         let offset = CRYPTO_PALS_MONTGOMERY.field().wrap(178i32.into())?;
