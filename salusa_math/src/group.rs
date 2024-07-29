@@ -341,14 +341,15 @@ where
         self.field().me2fe_wrap(raw).unwrap()
     }
 
-    fn pow(&self, rhs: &BigInt) -> Result<Self> {
+    fn pow(&self, rhs: &BigInt) -> Self {
         if self.is_zero() {
-            ensure!(!rhs.is_zero());
-            return Ok(self.clone());
+            assert!(!rhs.is_zero());
+
+            return self.clone();
         } else if self.is_one() {
-            return Ok(self.clone());
+            return self.clone();
         }
-        self.field().me2fe_wrap(self.mult_element()?.scalar_mult(rhs))
+        self.field().me2fe_wrap(self.mult_element().unwrap().scalar_mult(rhs)).unwrap()
     }
 
     fn is_zero(&self) -> bool {
@@ -710,10 +711,10 @@ mod tests {
         assert_eq!(&one_f * &two_f, two_f);
         assert_eq!(&two_f * &two_f, four_f);
 
-        assert_eq!(two_f.pow(&BigInt::one())?, two_f);
-        assert_eq!(two_f.pow(&two)?, four_f);
+        assert_eq!(two_f.pow(&BigInt::one()), two_f);
+        assert_eq!(two_f.pow(&two), four_f);
         println!("{} + {} = {}", four_f, four_f, &four_f + &four_f);
-        assert_eq!(one_f.pow(&three)?, one_f);
+        assert_eq!(one_f.pow(&three), one_f);
 
         // assert_eq!(seven, group.order().unwrap());
 

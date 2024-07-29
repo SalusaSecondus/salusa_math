@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
 use anyhow::{bail, ensure, Context, Result};
 use group::{Field, FieldElement, Group, GroupElement};
@@ -188,7 +188,7 @@ ME: GroupElement<T>,
         return 0;
     }
     let exp = (n.field().order().unwrap() - BigInt::one()) >> 1;
-    if n.pow(&exp).unwrap().is_one() {
+    if n.pow(&exp).is_one() {
         1
     } else {
         -1
@@ -203,7 +203,7 @@ FE: FieldElement<T, F, GE, ME>,
 GE: GroupElement<T>,
 ME: GroupElement<T>,
 {
-    let field = n.field();
+     let field = n.field();
     let p = field.order().context("Order required")?;
     let p_minus = p - BigInt::one();
 
@@ -222,9 +222,9 @@ ME: GroupElement<T>,
 
         let one = BigInt::one();
         let mut m = s;
-        let mut c = z.pow(&q)?;
-        let mut t = n.pow(&q)?;
-        let mut r = n.pow(&((&q + &BigInt::one()) >> 1))?;
+        let mut c = z.pow(&q);
+        let mut t = n.pow(&q);
+        let mut r = n.pow(&((&q + &BigInt::one()) >> 1));
         
         loop {
             // println!("m = {}, c = {:?}, t = {:?}, r = {:?}", m, c, t, r);
@@ -241,8 +241,9 @@ ME: GroupElement<T>,
                 t_pow = t_pow.mop(&t_pow);
                 if t_pow.is_one() {
                     // println!("{} - {} - 1", m, i);
+                    ensure!(i < m);
                     let exp = &one << (m - i - 1);
-                    let b = c.pow(&exp)?;
+                    let b = c.pow(&exp);
                     // println!("b = {}", b);
                     m = i;
                     c = b.mop(&b);

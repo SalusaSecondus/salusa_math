@@ -11,7 +11,7 @@ use crate::{
     },
     mod_sqrt,
 };
-use anyhow::{ensure, Context, Result};
+use anyhow::{ensure, Result};
 use lazy_static::lazy_static;
 use num::{BigInt, Num};
 use salusa_math_macros::GroupOps;
@@ -49,23 +49,21 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, GroupOps)]
-pub struct EcPoint<F, FE, T, GE, ME>
+pub struct EcPoint<F, T, GE, ME>
 where
-    F: Field<T, FE, GE, ME>,
-    FE: Eq + Clone + FieldElement<T, F, GE, ME>,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
-    affine: AffinePoint<FE>,
-    curve: EcCurve<F, FE, T, GE, ME>,
+    affine: AffinePoint<GenericFieldElement<T, F, GE, ME>>,
+    curve: EcCurve<F, T, GE, ME>,
 }
 
-impl<F, FE, T, GE, ME> Display for EcPoint<F, FE, T, GE, ME>
+impl<F, T, GE, ME> Display for EcPoint<F, T, GE, ME>
 where
-    F: Field<T, FE, GE, ME>,
-    FE: Eq + Clone + FieldElement<T, F, GE, ME> + Display,
-    T: Eq + Clone + Debug,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
+    T: Eq + Clone + Debug + Display,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
@@ -74,19 +72,18 @@ where
     }
 }
 
-impl<F, FE, T, GE, ME> GroupElement<AffinePoint<FE>> for EcPoint<F, FE, T, GE, ME>
+impl<F, T, GE, ME> GroupElement<AffinePoint<GenericFieldElement<T, F, GE, ME>>> for EcPoint<F, T, GE, ME>
 where
-    F: Field<T, FE, GE, ME>,
-    FE: Eq + Clone + FieldElement<T, F, GE, ME>,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
-    fn consume(self) -> AffinePoint<FE> {
+    fn consume(self) -> AffinePoint<GenericFieldElement<T, F, GE, ME>> {
         self.affine
     }
 
-    fn raw(&self) -> &AffinePoint<FE> {
+    fn raw(&self) -> &AffinePoint<GenericFieldElement<T, F, GE, ME>> {
         &self.affine
     }
 
@@ -108,26 +105,18 @@ where
         let (x1, y1) = (self.affine.x.clone(), self.affine.y.clone());
         let (x2, y2) = (rhs.affine.x.clone(), rhs.affine.y.clone());
 
+        let two = BigInt::from(2);
+        let three = BigInt::from(3);
+        let a = &self.curve.a;
         let m;
         if self == rhs {
-            let x1_sq = x1.mop(&x1);
-            let three_x1_sq = x1_sq.gop(&x1_sq).gop(&x1_sq);
-            let top = three_x1_sq.gop(&self.curve.a);
-            let bottom = y1.gop(&y1);
-            let bottom_inv = bottom.m_inv().unwrap();
-            m = top.mop(&bottom_inv);
+            m = (three * x1.pow(&two) + a) / (&two * &y1);
         } else {
-            let top = y2.gop(&y1.gneg());
-            let bottom = x2.gop(&x1.gneg());
-            let bottom_inv = bottom.m_inv().unwrap();
-            m = top.mop(&bottom_inv);
+            m = (&y2 - &y1) / (&x2 - &x1);
         }
 
-        let m_sq = m.mop(&m);
-
-        let x3 = m_sq.gop(&x1.gneg()).gop(&x2.gneg());
-        let x1_m_x3 = x1.gop(&x3.gneg());
-        let y3 = m.mop(&x1_m_x3).gop(&y1.gneg());
+        let x3 = m.pow(&two) - &x1 - &x2;
+        let y3 = &m * (x1 - &x3) - y1;
 
         let affine = AffinePoint {
             x: x3,
@@ -171,10 +160,9 @@ where
     }
 }
 
-impl<F, FE, T, GE, ME> EcPoint<F, FE, T, GE, ME>
+impl<F, T, GE, ME> EcPoint<F, T, GE, ME>
 where
-    F: Field<T, FE, GE, ME>,
-    FE: Eq + Clone + FieldElement<T, F, GE, ME>,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
@@ -183,22 +171,29 @@ where
         self.affine.inf
     }
 
-    pub fn curve(&self) -> &EcCurve<F, FE, T, GE, ME> {
+    pub fn curve(&self) -> &EcCurve<F, T, GE, ME> {
         &self.curve
+    }
+
+    pub fn x(&self) -> &GenericFieldElement<T, F, GE, ME> {
+        &self.affine.x
+    }
+
+    pub fn y(&self) -> &GenericFieldElement<T, F, GE, ME> {
+        &self.affine.y
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EcCurve<F, FE, T, GE, ME>
+pub struct EcCurve<F,  T, GE, ME>
 where
-    F: Field<T, FE, GE, ME>,
-    FE: Eq + Clone + FieldElement<T, F, GE, ME>,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
-    pub a: FE,
-    pub b: FE,
+    pub a: GenericFieldElement<T, F, GE, ME>,
+    pub b: GenericFieldElement<T, F, GE, ME>,
     order: Option<BigInt>,
     pub strict: bool,
     _pf: PhantomData<F>,
@@ -207,19 +202,18 @@ where
     _pme: PhantomData<ME>,
 }
 
-impl<F, FE, T, GE, ME> EcCurve<F, FE, T, GE, ME>
+impl<F, T, GE, ME> EcCurve<F, T, GE, ME>
 where
-    F: Field<T, FE, GE, ME>,
-    FE: Eq + Clone + FieldElement<T, F, GE, ME>,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
-    pub fn new(a: FE, b: FE, order: Option<BigInt>) -> Self {
+    pub fn new(a: GenericFieldElement<T, F, GE, ME>, b: GenericFieldElement<T, F, GE, ME>, order: Option<BigInt>) -> Self {
         Self::new_with_strict(a, b, order, true)
     }
 
-    pub fn new_with_strict(a: FE, b: FE, order: Option<BigInt>, strict: bool) -> Self {
+    pub fn new_with_strict(a: GenericFieldElement<T, F, GE, ME>, b: GenericFieldElement<T, F, GE, ME>, order: Option<BigInt>, strict: bool) -> Self {
         assert_eq!(a.field(), b.field());
         EcCurve {
             a,
@@ -236,17 +230,8 @@ where
     pub fn field(&self) -> &F {
         self.a.field()
     }
-}
 
-impl<F, FE, GE, ME> EcCurve<F, FE, BigInt, GE, ME>
-where
-    F: Field<BigInt, FE, GE, ME>,
-    FE: Eq + Clone + FieldElement<BigInt, F, GE, ME>,
-    GE: GroupElement<BigInt>,
-    ME: GroupElement<BigInt>,
-{
-    pub fn decompress(&self, x: BigInt, y_bit: bool) -> Result<EcPoint<F, FE, BigInt, GE, ME>> {
-        let x = self.field().wrap(x)?;
+    pub fn decompress(&self, x: GenericFieldElement<T, F, GE, ME>, y_bit: bool) -> Result<EcPoint<F, T, GE, ME>> {
         let x_cubed = x.mop(&x).mop(&x);
         let a_x = self.a.mop(&x);
         let rhs = x_cubed.gop(&a_x).gop(&self.b);
@@ -266,16 +251,15 @@ where
     }
 }
 
-impl<F, FE, T, GE, ME> Group<AffinePoint<FE>, EcPoint<F, FE, T, GE, ME>>
-    for EcCurve<F, FE, T, GE, ME>
+impl<F, T, GE, ME> Group<AffinePoint<GenericFieldElement<T, F, GE, ME>>, EcPoint<F, T, GE, ME>>
+    for EcCurve<F, T, GE, ME>
 where
-    F: Field<T, FE, GE, ME>,
-    FE: Eq + Clone + FieldElement<T, F, GE, ME>,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
-    fn identity(&self) -> EcPoint<F, FE, T, GE, ME> {
+    fn identity(&self) -> EcPoint<F, T, GE, ME> {
         let zero = self.field().identity();
         EcPoint {
             affine: AffinePoint {
@@ -287,7 +271,7 @@ where
         }
     }
 
-    fn contains(&self, val: &AffinePoint<FE>) -> bool {
+    fn contains(&self, val: &AffinePoint<GenericFieldElement<T, F, GE, ME>>) -> bool {
         if val.inf {
             return true;
         }
@@ -307,7 +291,7 @@ where
         y_squared == rhs
     }
 
-    fn of(&self, val: &AffinePoint<FE>) -> Result<EcPoint<F, FE, T, GE, ME>> {
+    fn of(&self, val: &AffinePoint<GenericFieldElement<T, F, GE, ME>>) -> Result<EcPoint<F, T, GE, ME>> {
         ensure!(!self.strict || self.contains(val));
 
         Ok(EcPoint {
@@ -316,7 +300,7 @@ where
         })
     }
 
-    fn wrap(&self, val: AffinePoint<FE>) -> Result<EcPoint<F, FE, T, GE, ME>> {
+    fn wrap(&self, val: AffinePoint<GenericFieldElement<T, F, GE, ME>>) -> Result<EcPoint<F, T, GE, ME>> {
         ensure!(!self.strict || self.contains(&val));
 
         Ok(EcPoint {
@@ -330,11 +314,10 @@ where
     }
 }
 
-impl<F, FE, T, GE, ME> Display for EcCurve<F, FE, T, GE, ME>
+impl<F, T, GE, ME> Display for EcCurve<F, T, GE, ME>
 where
-    F: Field<T, FE, GE, ME>,
-    FE: Eq + Clone + FieldElement<T, F, GE, ME> + Display,
-    T: Eq + Clone + Debug,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
+    T: Eq + Clone + Debug + Display,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
@@ -344,9 +327,8 @@ where
 }
 
 lazy_static! {
-    static ref CRYPTO_PALS_WEIERSTRASS: EcCurve<
+    pub static ref CRYPTO_PALS_WEIERSTRASS: EcCurve<
         ZField,
-        GenericFieldElement<BigInt, ZField, ZAddElement, ZMultElement>,
         BigInt,
         ZAddElement,
         ZMultElement,
@@ -359,9 +341,8 @@ lazy_static! {
         let order = BigInt::from_str_radix("29246302889428143187362802287225875743", 10).unwrap();
         EcCurve::new(a, b, Some(order))
     };
-    static ref CRYPTO_PALS_WEIERSTRASS_G: EcPoint<
+    pub static ref CRYPTO_PALS_WEIERSTRASS_G: EcPoint<
         ZField,
-        GenericFieldElement<BigInt, ZField, ZAddElement, ZMultElement>,
         BigInt,
         ZAddElement,
         ZMultElement,
@@ -378,11 +359,9 @@ lazy_static! {
 
 #[cfg(test)]
 mod tests {
-    use num::{Num, One};
+    use num::One;
     use num_bigint::RandBigInt;
     use rand_core::OsRng;
-
-    use crate::group::ZField;
 
     use super::*;
 
@@ -419,7 +398,7 @@ mod tests {
         let y_bit = rnd_point.raw().y.raw().bit(0);
 
         let recovered =
-            CRYPTO_PALS_WEIERSTRASS.decompress(rnd_point.raw().x.raw().clone(), y_bit)?;
+            CRYPTO_PALS_WEIERSTRASS.decompress(rnd_point.raw().x.clone(), y_bit)?;
 
         assert_eq!(recovered, rnd_point);
 
