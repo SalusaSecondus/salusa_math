@@ -1,5 +1,6 @@
 pub mod montgomery;
 pub mod weierstrass;
+pub mod mont2;
 
 #[cfg(test)]
 mod tests {
