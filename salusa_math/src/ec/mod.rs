@@ -24,17 +24,17 @@ mod tests {
 
         let zero_m = CRYPTO_PALS_MONTGOMERY.identity();
         let one_m = CRYPTO_PALS_MONTGOMERY_G.clone();
-        let two_m = one_m.gop(&one_m);
-        let three_m = one_m.gop(&two_m);
-
+        // let two_m = one_m.gop(&one_m);
+        // let three_m = one_m.gop(&two_m);
+// 
         points_equal(&zero_w, &zero_m);
         assert_eq!(zero_m, one_m.scalar_mult(&BigInt::ZERO));
 
         points_equal(&one_w, &one_m);
         println!("{} ?+ {}", one_w, one_m);
         assert_eq!(one_m, one_m.scalar_mult(&BigInt::one()));
-        assert_eq!(two_m, one_m.scalar_mult(&BigInt::from(2i32)));
-        assert_eq!(three_m, one_m.scalar_mult(&BigInt::from(3i32)));
+        points_equal(&two_w, &one_m.scalar_mult(&2.into()));
+        points_equal(&three_w, &one_m.scalar_mult(&3.into()));
 
         let inf_w = one_w.scalar_mult(CRYPTO_PALS_WEIERSTRASS.order().unwrap());
         let inf_m = one_m.scalar_mult(CRYPTO_PALS_MONTGOMERY.order().unwrap());

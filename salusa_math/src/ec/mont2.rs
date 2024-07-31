@@ -1,15 +1,21 @@
 // A clean montgomery implementation with no internal dependencies to figure out where I'm making mistakes.
 // This also doesn't use any generic types to keep things really simple.
 
+use crate::{group::{FieldElement, GroupElement}, Field, Group};
+
 use std::str::FromStr;
 
 use lazy_static::lazy_static;
 use num::{BigInt, One, Zero};
 
-#[derive(Clone, Eq)]
+use crate::group::{GenericFieldElement, ZAddElement, ZField, ZMultElement};
+
+type FE = GenericFieldElement<BigInt, ZField, ZAddElement, ZMultElement>;
+
+#[derive(Clone, Eq , Debug)]
 struct MontgomeryPoint {
-    u: BigInt,
-    v: Option<BigInt>,
+    u: FE,
+    v: Option<FE>,
 }
 
 impl PartialEq for MontgomeryPoint {
@@ -29,23 +35,23 @@ impl std::fmt::Display for MontgomeryPoint {
 }
 
 struct CurveParams {
-    a: BigInt,
-    b: BigInt,
-    p: BigInt,
+    a: FE,
+    b: FE,
     order: BigInt,
     g: MontgomeryPoint,
 }
 
 lazy_static! {
+    static ref GF : ZField = ZField::modulus(&BigInt::from_str("233970423115425145524320034830162017933").unwrap());
     static ref CURVE_PARAMS: CurveParams = {
         CurveParams {
-            a: BigInt::from(534),
-            b: BigInt::one(),
-            p: BigInt::from_str("233970423115425145524320034830162017933").unwrap(),
+            a: GF.wrap(BigInt::from(534)).unwrap(),
+            b: GF.mult_identity(),
             order: BigInt::from_str("29246302889428143187362802287225875743").unwrap(),
             g: MontgomeryPoint {
-                u: BigInt::from(4),
-                v: None,
+                u: GF.wrap(BigInt::from(4)).unwrap(),
+                v: Some(GF.wrap(85518893674295321206118380980485522083u128.into())
+                .unwrap()),
             },
         }
     };
@@ -54,31 +60,38 @@ lazy_static! {
 }
 
 // Not constant time.... I know.....
-fn cswap<T>(a: T, b: T, condition: &BigInt) -> (T, T) {
-    if condition.is_one() {
+fn cswap<T>(a: T, b: T, condition: bool) -> (T, T) {
+    if condition {
         (b, a)
     } else {
         (a, b)
     }
 }
 
-fn ladder(u: &BigInt, k: &BigInt) -> BigInt {
-    let (mut u2, mut w2) = (BigInt::one(), BigInt::zero());
-    let (mut u3, mut w3) = (u.clone(), BigInt::one());
+fn ladder(point: &MontgomeryPoint, k: &BigInt) -> MontgomeryPoint {
+    let u = &point.u;
+    let field = u.field();
+    let one = field.mult_identity();
+    let zero = field.identity();
+    let (mut u2, mut w2) = (one.clone(), zero);
+    let (mut u3, mut w3) = (u.clone(), one);
 
-    for i in (0..CURVE_PARAMS.p.bits()).rev() {
-        let b = BigInt::one() & (k >> i);
-        let b = &b;
+    let p = field.order().unwrap();
+    for i in (0..p.bits()).rev() {
+        let b = k.bit(i);
         (u2, u3) = cswap(u2, u3, b);
         (w2, w3) = cswap(w2, w3, b);
-        (u3, w3) = ((&u2*&u3 - &w2*&w3).modpow(&TWO, &CURVE_PARAMS.p),
-                   u * (&u2*&w3 - &w2*&u3).modpow(&TWO, &CURVE_PARAMS.p));
-        (u2, w2) = ((u2.modpow(&TWO, &CURVE_PARAMS.p) - w2.modpow(&TWO, &CURVE_PARAMS.p)).modpow(&TWO, &CURVE_PARAMS.p),
-                   4*&u2*&w2 * (u2.modpow(&TWO, &CURVE_PARAMS.p) + &CURVE_PARAMS.a*&u2*&w2 + w2.modpow(&TWO, &CURVE_PARAMS.p)));
+        (u3, w3) = ((&u2*&u3 - &w2*&w3).pow(&TWO),
+                   u * (&u2*&w3 - &w2*&u3).pow(&TWO));
+        (u2, w2) = ((u2.pow(&TWO) - w2.pow(&TWO)).pow(&TWO),
+                   &*FOUR*&u2*&w2 * (u2.pow(&TWO) + &CURVE_PARAMS.a*&u2*&w2 + w2.pow(&TWO)));
+
         (u2, u3) = cswap(u2, u3, b);
         (w2, w3) = cswap(w2, w3, b);
+
     }
-    u2 * w2.modpow(&(&CURVE_PARAMS.p - &*TWO), &CURVE_PARAMS.p)
+    let new_u = u2 * w2.pow(&(p - &*TWO));
+    MontgomeryPoint { u: new_u, v: None }
 }
 
 #[cfg(test)]
@@ -89,10 +102,11 @@ mod tests {
     fn smoke() {
         let g = CURVE_PARAMS.g.clone();
         println!("{}", g);
-        println!("{}", ladder(&g.u, &CURVE_PARAMS.order));
+        println!("{}", ladder(&g, &CURVE_PARAMS.order));
 
-        println!("{}", ladder(&g.u, &BigInt::one()));
-        println!("{}", ladder(&g.u, &BigInt::from(2)));
+        println!("{}", ladder(&g, &BigInt::one()));
+        println!("{}", ladder(&g, &BigInt::from(2)));
 
+        println!("{:?}", g);
     }
 }

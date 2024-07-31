@@ -115,116 +115,7 @@ where
     }
 
     fn gop(&self, rhs: &Self) -> Self {
-        if self.curve.strict || rhs.curve.strict {
-            assert_eq!(self.curve, rhs.curve);
-        }
-        if self.is_infinity() {
-            return rhs.clone();
-        }
-        if rhs.is_infinity() {
-            return self.clone();
-        }
-
-        if self == &rhs.gneg() {
-            return self.curve.identity();
-        }
-        let a = &self.curve.a;
-        let b = &self.curve.b;
-
-        let x1 = &self.point.u;
-        let y1 = self.point.v.as_ref().unwrap();
-        let x2 = &rhs.point.u;
-        let y2 = rhs.point.v.as_ref().unwrap();
-
-        if x1 != x2 {
-            let y2_m_y1 = y2.gop(&y1.gneg());
-            let y2_m_y1_sq = y2_m_y1.mop(&y2_m_y1);
-            let x2_m_x1 = x2.gop(&x1.gneg());
-            let x2_m_x1_sq = x2_m_x1.mop(&x2_m_x1);
-
-            let x2_m_x1_sq_inv = x2_m_x1_sq.m_inv().unwrap();
-
-            let x3 = self
-                .curve
-                .b
-                .mop(&y2_m_y1_sq)
-                .mop(&x2_m_x1_sq_inv)
-                .gop(&a.gneg())
-                .gop(&x1.gneg())
-                .gop(&x2.gneg());
-
-            let tmp1 = x1.gop(&x1).gop(&x2).gop(a).mop(&y2_m_y1);
-            let x2_m_x1_inv = x2_m_x1.m_inv().unwrap();
-            let tmp1 = tmp1.mop(&x2_m_x1_inv);
-
-            let tmp2 = b.mop(&y2_m_y1_sq).mop(&y2_m_y1);
-
-            let tmp3 = b.mop(y1);
-            let tmp3 = tmp3.gop(&tmp3);
-            let tmp3 = tmp3.mop(&tmp3).mop(&tmp3);
-            let tmp3 = tmp3.m_inv().unwrap();
-
-            let tmp2 = tmp2.mop(&tmp3);
-
-            let y3 = tmp1.gop(&tmp2.gneg()).gop(&y1.gneg());
-            let inf = x3.is_zero();
-
-            let point = MontgomeryPoint {
-                u: x3,
-                v: Some(y3),
-                inf,
-            };
-            Self {
-                point,
-                curve: self.curve.clone(),
-            }
-        } else {
-            if self.is_infinity() {
-                return self.clone();
-            }
-            let one = x1.field().mult_identity();
-            let x1_sq = x1.mop(x1);
-            let three_x1_sq = x1_sq.gop(&x1_sq).gop(&x1_sq);
-            let a_x1 = a.gop(x1);
-            let two_a_x1 = a_x1.gop(&a_x1);
-            let three_x1sq_two_a_x1_one = three_x1_sq.gop(&two_a_x1).gop(&one);
-            let tmp1 = three_x1sq_two_a_x1_one.mop(&three_x1sq_two_a_x1_one);
-            let tmp1 = b.mop(&tmp1);
-
-            let b_y1 = b.mop(y1);
-            let two_b_y1 = b_y1.gop(&b_y1);
-            let two_b_y1_sq = two_b_y1.mop(&two_b_y1);
-            let two_b_y1_sq_inv = two_b_y1_sq.m_inv().unwrap();
-            let tmp1 = tmp1.mop(&two_b_y1_sq_inv);
-            let x3 = tmp1.gop(&a.gneg()).gop(&x1.gneg()).gop(&x1.gneg());
-
-            let tmp1 = x1.gop(x1).gop(x1).gop(a);
-            let tmp2 = three_x1_sq.gop(&two_a_x1).gop(&one);
-            let two_b_y1_inv = two_b_y1.m_inv().unwrap();
-            let tmp2 = tmp1.mop(&tmp2).mop(&two_b_y1_inv);
-
-            let tmp3 = three_x1sq_two_a_x1_one
-                .mop(&three_x1sq_two_a_x1_one)
-                .mop(&three_x1sq_two_a_x1_one);
-            let tmp3 = b.mop(&tmp3);
-            let two_b_y1_cube = two_b_y1.mop(&two_b_y1_sq);
-            let two_b_y1_cube_inv = two_b_y1_cube.m_inv().unwrap();
-            let tmp3 = tmp3.mop(&two_b_y1_cube_inv);
-
-            let y3 = tmp2.gop(&tmp3.gneg()).gop(&y1.gneg());
-
-            let inf = x3.is_zero();
-
-            let point = MontgomeryPoint {
-                u: x3,
-                v: Some(y3),
-                inf,
-            };
-            Self {
-                point,
-                curve: self.curve.clone(),
-            }
-        }
+        todo!()
     }
 
     fn gneg(&self) -> Self {
@@ -256,30 +147,42 @@ where
     }
 
     fn scalar_mult(&self, k: &BigInt) -> Self {
-        let x1 = &self.point.u;
-        let p = x1.field().order().unwrap();
-        let p_minus2 = p - BigInt::from(2);
-
-        let mut x2 = x1.field().mult_identity();
-        let mut z2 = x1.field().identity();
-        let mut x3 = x1.field().identity();
-        let mut z3 = x1.field().mult_identity();
-
-        println!("({:?}, {:?}) ({:?}, {:?})", x2.raw(), z2.raw(), x3.raw(), z3.raw());
-
-        let mut prev_bit = false;
-        for i in (0..p.bits()).rev() {
-            let bit = k.bit(i);
-            let b = bit ^ prev_bit;
-            prev_bit = bit;
-
-            ((x2, z2), (x3, z3)) = cswap((x2, z2), (x3, z3), b);
-            ((x2, z2), (x3, z3)) = self.curve.ladder_step(x2, z2, x3, z3, x1);
+        lazy_static!{
+            static ref TWO : BigInt = BigInt::from(2);
+            static ref FOUR : BigInt = BigInt::from(4);
         }
-        
-        let new_u = x2 * z3.pow(&p_minus2);
+        let u = &self.point.u;
+        let field = u.field();
+        let one = field.mult_identity();
+        let zero = field.identity();
+        let (mut u2, mut w2) = (one.clone(), zero);
+        let (mut u3, mut w3) = (u.clone(), one);
+    
+        let p = field.order().unwrap();
+        for i in (0..p.bits()).rev() {
+            let b = k.bit(i);
+            (u2, u3) = cswap(u2, u3, b);
+            (w2, w3) = cswap(w2, w3, b);
+
+            (u3, w3) = ((&u2*&u3 - &w2*&w3).pow(&TWO),
+                       u * (&u2*&w3 - &w2*&u3).pow(&TWO));
+            (u2, w2) = ((u2.pow(&TWO) - w2.pow(&TWO)).pow(&TWO),
+                       &*FOUR*&u2*&w2 * (u2.pow(&TWO) + &self.curve.a*&u2*&w2 + w2.pow(&TWO)));
+
+            (u2, u3) = cswap(u2, u3, b);
+            (w2, w3) = cswap(w2, w3, b);
+
+        }
+        let new_u = u2 * w2.pow(&(p - &*TWO));
         let inf = new_u.is_zero();
-        Self { point: MontgomeryPoint { u: new_u, v: None, inf}, curve: self.curve.clone() }
+        Self {
+            point: MontgomeryPoint {
+                u: new_u,
+                v: None,
+                inf
+            },
+            curve: self.curve.clone()
+        }
     }
 }
 
@@ -390,36 +293,6 @@ where
         };
 
         Ok(point)
-    }
-
-    fn ladder_step(&self, x2: GenericFieldElement<T, F, GE, ME>, z2: GenericFieldElement<T, F, GE, ME>, x3: GenericFieldElement<T, F, GE, ME>, z3: GenericFieldElement<T, F, GE, ME>, x1: &GenericFieldElement<T, F, GE, ME>) ->
-    ((GenericFieldElement<T, F, GE, ME>, GenericFieldElement<T, F, GE, ME>), (GenericFieldElement<T, F, GE, ME>, GenericFieldElement<T, F, GE, ME>)) {
-        let one = x2.field().mult_identity();
-        let two = &one + &one;
-        let four = &two + &two;
-        let a_plus_2 = &self.a + &two;
-        let a24 = &a_plus_2 / &four;
-
-        let t1 = &x2 + &z2;
-        let t2 = &x2 - &z2;
-        let t3 = &x3 + &z3;
-        let t4 = &x3 - &z3;
-        let t5 = &t1 * &t1;
-        let t6 = &t2 * &t2;
-        let t2 = t2 * t3;
-        let t1 = t1 * t4;
-        let t1 = t1 + &t2;
-        let t2 = &t1 - &t2;
-        let x3 = &t1 * &t1;
-        let t2 = &t2 * &t2;
-        let z3 = &t2 * x1;
-        let x2 = &t5 * &t6;
-        let t5 = t5 - &t6;
-        let t1 = a24 * &t5;
-        let t6 = t6 + t1;
-        let z2 = t5 * t6;
-
-        ((x2, z2), (x3, z3))
     }
 }
 
@@ -541,6 +414,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn smoke2() {
+        let g = CRYPTO_PALS_MONTGOMERY_G.clone();
+        let order = &CRYPTO_PALS_MONTGOMERY.order().unwrap();
+        println!("{}", g);
+        println!("{}", g.scalar_mult(order));
+
+        println!("{}", g.scalar_mult(&BigInt::one()));
+        println!("{}", g.scalar_mult( &BigInt::from(2)));
+
+        println!("{:?}", g);
+
+    }
+
+    #[test]
     fn smoke() -> Result<()> {
         println!("{}", *CRYPTO_PALS_MONTGOMERY);
 
@@ -554,11 +441,6 @@ mod tests {
         );
         println!("{:?}", result);
         assert!(result.is_infinity());
-
-        let result = CRYPTO_PALS_MONTGOMERY_G
-            .scalar_mult(&(CRYPTO_PALS_MONTGOMERY.order().unwrap() - BigInt::one()));
-        println!("{}", result);
-        println!("{}", result.gop(&CRYPTO_PALS_MONTGOMERY_G));
         Ok(())
     }
 
