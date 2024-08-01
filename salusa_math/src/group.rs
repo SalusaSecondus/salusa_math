@@ -428,6 +428,22 @@ where
     phantom_2: PhantomData<ME>,
 }
 
+impl<T, F, GE, ME> GenericFieldElement<T, F, GE, ME>
+where
+    T: Eq + Clone + Debug,
+    GE: GroupElement<T>,
+    ME: GroupElement<T>,
+    F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>
+{
+    pub fn of(value: &T, field: &F) -> Self {
+        Self::wrap(value.clone(), field)
+    }
+
+    pub fn wrap(value: T, field: &F) -> Self {
+        let field = field.clone();
+        Self { value, field, phantom_1: PhantomData::default(), phantom_2: PhantomData::default()}
+    }
+}
 
 impl<T, F, GE, ME> GroupElement<T> for GenericFieldElement<T, F, GE, ME>
 where
