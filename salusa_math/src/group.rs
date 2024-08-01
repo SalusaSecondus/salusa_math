@@ -73,6 +73,12 @@ where
             r0
         }
     }
+
+    fn is_identity(&self) -> bool {
+        self.identity() == *self
+    }
+
+    fn is_raw_identity(raw: &T) -> Option<bool>;
 }
 
 pub trait Group<T, GE>: std::fmt::Debug + Sized + Clone + Eq
@@ -179,6 +185,14 @@ impl GroupElement<BigInt> for ZAddElement {
 
     fn to_bytes(&self) -> Vec<u8> {
         self.raw().to_bytes_be().1
+    }
+
+    fn is_identity(&self) -> bool {
+        self.raw().is_zero()
+    }
+    
+    fn is_raw_identity(raw: &BigInt) -> Option<bool> {
+        Some(raw.is_zero())
     }
 }
 
@@ -291,6 +305,14 @@ impl GroupElement<BigInt> for ZMultElement {
     fn to_bytes(&self) -> Vec<u8> {
         self.raw().to_bytes_be().1
     }
+    
+    fn is_identity(&self) -> bool {
+        self.raw().is_one()
+    }
+    
+    fn is_raw_identity(raw: &BigInt) -> Option<bool> {
+        Some(raw.is_one())
+    }    
 }
 
 pub trait Field<T, FE, GE, ME>: Group<T, FE>
@@ -353,12 +375,12 @@ where
     }
 
     fn is_zero(&self) -> bool {
-        self.add_element() == self.field().add_group().identity()
+        self.add_element().is_identity()
     }
 
     fn is_one(&self) -> bool {
         if let Ok(me) = self.mult_element() {
-            me == self.field().mult_group().identity()
+            me.is_identity()
         } else {
             false
         }
@@ -439,6 +461,10 @@ where
     fn to_bytes(&self) -> Vec<u8> {
         self.add_element().to_bytes()
     }
+    
+    fn is_raw_identity(raw: &T) -> Option<bool> {
+        GE::is_raw_identity(raw)
+    }    
 }
 
 impl<T, F, GE, ME> FieldElement<T, F, GE, ME> for GenericFieldElement<T, F, GE, ME>
@@ -452,6 +478,38 @@ where
     fn field(&self) -> &F {
         &self.field
     }
+    
+    fn is_zero(&self) -> bool {
+        if let Some(raw_zero) = GE::is_raw_identity(self.raw()) {
+            raw_zero
+        } else {
+            self.add_element().is_identity()
+        }
+    }
+    
+    fn is_one(&self) -> bool {
+        if let Some(raw_one) = ME::is_raw_identity(self.raw()) {
+            raw_one
+        } else if let Ok(me) = self.mult_element() {
+            me.is_identity()
+        } else {
+            false
+        }
+    }
+    
+    fn mult_element(&self) -> Result<ME> {
+        self.field().mult_group().of(self.raw())
+    }
+    
+    fn add_element(&self) -> GE {
+        self.field().add_group().of(self.raw()).unwrap()
+    }
+    
+    fn m_inv(&self) -> Result<Self> {
+        self.field().wrap(self.mult_element()?.gneg().consume())
+    }
+
+    
 }
 
 impl<T, F, GE, ME> Display for GenericFieldElement<T, F, GE, ME>

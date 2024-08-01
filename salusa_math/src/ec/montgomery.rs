@@ -16,43 +16,6 @@ use lazy_static::lazy_static;
 use num::{BigInt, Num as _};
 use salusa_math_macros::GroupOps;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MontgomeryPoint<FE>
-where
-    FE: Clone + Debug,
-{
-    pub u: FE,
-    pub v: Option<FE>,
-    pub inf: bool,
-}
-
-impl<FE> Display for MontgomeryPoint<FE>
-where
-    FE: Eq + Clone + Display + Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.inf {
-            write!(f, "\u{1D4DE}")
-        } else if let Some(v) = &self.v {
-            write!(f, "({}, {})", self.u, v)
-        } else {
-            write!(f, "({}, _)", self.u)
-        }
-    }
-}
-
-impl<FE> MontgomeryPoint<FE>
-where
-    FE: Clone + Debug,
-{
-    pub fn new(x: FE, y: FE) -> Self {
-        MontgomeryPoint {
-            u: x,
-            v: Some(y),
-            inf: false,
-        }
-    }
-}
 
 #[derive(Debug, Clone, GroupOps)]
 pub struct EcPoint<F, T, GE, ME>
@@ -62,7 +25,7 @@ where
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
-    point: MontgomeryPoint<GenericFieldElement<T, F, GE, ME>>,
+    u: GenericFieldElement<T, F, GE, ME>,
     curve: EcCurve<F, T, GE, ME>,
 }
 
@@ -95,47 +58,31 @@ where
     ME: GroupElement<T>,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.point, f)
+        write!(f, "({}, _)", self.u)
     }
 }
 
-impl<F, T, GE, ME> GroupElement<MontgomeryPoint<GenericFieldElement<T, F, GE, ME>>> for EcPoint<F, T, GE, ME>
+impl<F, T, GE, ME> GroupElement<GenericFieldElement<T, F, GE, ME>> for EcPoint<F, T, GE, ME>
 where
     F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
     T: Eq + Clone + Debug,
     GE: GroupElement<T>,
     ME: GroupElement<T>,
 {
-    fn consume(self) -> MontgomeryPoint<GenericFieldElement<T, F, GE, ME>> {
-        self.point
+    fn consume(self) -> GenericFieldElement<T, F, GE, ME> {
+        self.u
     }
 
-    fn raw(&self) -> &MontgomeryPoint<GenericFieldElement<T, F, GE, ME>> {
-        &self.point
+    fn raw(&self) -> &GenericFieldElement<T, F, GE, ME> {
+        &self.u
     }
 
-    fn gop(&self, rhs: &Self) -> Self {
+    fn gop(&self, _rhs: &Self) -> Self {
         todo!()
     }
 
     fn gneg(&self) -> Self {
-        if self.is_infinity() {
-            return self.clone();
-        }
-        if let Some(v) = &self.point.v {
-            let neg_v = v.gneg();
-            let neg_raw = MontgomeryPoint {
-                u: self.point.u.clone(),
-                v: Some(neg_v),
-                inf: false,
-            };
-            Self {
-                point: neg_raw,
-                curve: self.curve.clone(),
-            }
-        } else {
-            self.clone()
-        }
+        self.clone()
     }
 
     fn identity(&self) -> Self {
@@ -143,7 +90,7 @@ where
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        self.point.u.to_bytes()
+        self.u.to_bytes()
     }
 
     fn scalar_mult(&self, k: &BigInt) -> Self {
@@ -151,7 +98,7 @@ where
             static ref TWO : BigInt = BigInt::from(2);
             static ref FOUR : BigInt = BigInt::from(4);
         }
-        let u = &self.point.u;
+        let u = &self.u;
         let field = u.field();
         let one = field.mult_identity();
         let zero = field.identity();
@@ -174,15 +121,14 @@ where
 
         }
         let new_u = u2 * w2.pow(&(p - &*TWO));
-        let inf = new_u.is_zero();
         Self {
-            point: MontgomeryPoint {
-                u: new_u,
-                v: None,
-                inf
-            },
+            u: new_u,
             curve: self.curve.clone()
         }
+    }
+    
+    fn is_raw_identity(raw: &GenericFieldElement<T, F, GE, ME>) -> Option<bool> {
+        Some(raw.is_zero())
     }
 }
 
@@ -203,7 +149,7 @@ where
     ME: GroupElement<T>,
 {
     pub fn is_infinity(&self) -> bool {
-        self.point.inf
+        self.u.is_zero()
     }
 
     pub fn curve(&self) -> &EcCurve<F, T, GE, ME> {
@@ -211,11 +157,11 @@ where
     }
 
     pub fn u(&self) -> &GenericFieldElement<T, F, GE, ME> {
-        &self.point.u
+        &self.u
     }
 
-    pub fn v(&self) -> Option<&GenericFieldElement<T, F, GE, ME>> {
-        self.point.v.as_ref()
+    pub fn v(&self) -> Result<GenericFieldElement<T, F, GE, ME>> {
+        self.curve.recover_v(&self.u, true)
     }
 }
 
@@ -266,7 +212,7 @@ where
         self.a.field()
     }
 
-    pub fn decompress(&self, u: &GenericFieldElement<T, F, GE, ME>, v_bit: bool) -> Result<EcPoint<F, T, GE, ME>> {
+    pub fn recover_v(&self, u: &GenericFieldElement<T, F, GE, ME>, v_bit: bool) -> Result<GenericFieldElement<T, F, GE, ME>> {
         let u_sq = u.mop(u);
         let u_cube = u.mop(&u_sq);
 
@@ -282,21 +228,12 @@ where
         if actual_v_bit != v_bit {
             v = v.gneg();
         }
-        let point = MontgomeryPoint {
-            u: u.clone(),
-            v: Some(v),
-            inf: false,
-        };
-        let point = EcPoint {
-            point,
-            curve: self.clone(),
-        };
 
-        Ok(point)
+        Ok(v)
     }
 }
 
-impl<F, T, GE, ME> Group<MontgomeryPoint<GenericFieldElement<T, F, GE, ME>>, EcPoint<F, T, GE, ME>>
+impl<F, T, GE, ME> Group<GenericFieldElement<T, F, GE, ME>, EcPoint<F, T, GE, ME>>
     for EcCurve<F, T, GE, ME>
 where
     F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
@@ -305,62 +242,41 @@ where
     ME: GroupElement<T>,
 {
     fn identity(&self) -> EcPoint<F, T, GE, ME> {
-        let zero = self.field().identity();
+        let u = self.field().identity();
         EcPoint {
-            point: MontgomeryPoint {
-                u: zero.clone(),
-                v: Some(zero),
-                inf: true,
-            },
+            u,
             curve: self.clone(),
         }
     }
 
-    fn contains(&self, val: &MontgomeryPoint<GenericFieldElement<T, F, GE, ME>>) -> bool {
-        if val.inf {
+    fn contains(&self, val: &GenericFieldElement<T, F, GE, ME>) -> bool {
+        if val.is_zero() {
             return true;
         }
-        let decompressed_v = self.decompress(&val.u, true);
-        if decompressed_v.is_err() {
-            return false;
-        }
-        if let Some(v) = val.v.as_ref() {
-            let decompressed_v = decompressed_v.unwrap();
-            let decompressed_v = decompressed_v.point.v.unwrap();
-            if decompressed_v == *v {
-                return true;
-            }
-            let decompressed_v = decompressed_v.gneg();
-            if decompressed_v == *v {
-                return true;
-            }
-            false
-        } else {
-            true
-        }
+        self.recover_v(val, true).is_ok()
     }
 
-    fn of(&self, val: &MontgomeryPoint<GenericFieldElement<T, F, GE, ME>>) -> Result<EcPoint<F, T, GE, ME>> {
+    fn of(&self, val: &GenericFieldElement<T, F, GE, ME>) -> Result<EcPoint<F, T, GE, ME>> {
         ensure!(!self.strict || self.contains(val));
 
         Ok(EcPoint {
-            point: val.clone(),
+            u: val.clone(),
             curve: self.clone(),
         })
     }
 
-    fn wrap(&self, val: MontgomeryPoint<GenericFieldElement<T, F, GE, ME>>) -> Result<EcPoint<F, T, GE, ME>> {
+    fn wrap(&self, val: GenericFieldElement<T, F, GE, ME>) -> Result<EcPoint<F, T, GE, ME>> {
         ensure!(!self.strict || self.contains(&val));
 
         Ok(EcPoint {
-            point: val,
+            u: val,
             curve: self.clone(),
         })
     }
 
     fn order(&self) -> Option<&num::BigInt> {
         self.order.as_ref()
-    }
+    }   
 }
 
 impl<F, T, GE, ME> Display for EcCurve<F, T, GE, ME>
@@ -397,13 +313,7 @@ lazy_static! {
         ZAddElement,
         ZMultElement,
     > = CRYPTO_PALS_MONTGOMERY
-        .wrap(MontgomeryPoint::new(
-            CRYPTO_PALS_MONTGOMERY.field().wrap(4u32.into()).unwrap(),
-            CRYPTO_PALS_MONTGOMERY
-                .field()
-                .wrap(85518893674295321206118380980485522083u128.into())
-                .unwrap()
-        ))
+        .wrap(CRYPTO_PALS_MONTGOMERY.field().wrap(4.into()).unwrap())
         .unwrap();
 }
 

@@ -1,7 +1,8 @@
+#[allow(dead_code)]
 // A clean montgomery implementation with no internal dependencies to figure out where I'm making mistakes.
 // This also doesn't use any generic types to keep things really simple.
 
-use crate::{group::{FieldElement, GroupElement}, Field, Group};
+use crate::{group::FieldElement, Field, Group};
 
 use std::str::FromStr;
 

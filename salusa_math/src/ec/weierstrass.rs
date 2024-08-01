@@ -158,6 +158,10 @@ where
         x.extend_from_slice(&y);
         x
     }
+    
+    fn is_raw_identity(raw: &AffinePoint<GenericFieldElement<T, F, GE, ME>>) -> Option<bool> {
+        Some(raw.inf)
+    }
 }
 
 impl<F, T, GE, ME> EcPoint<F, T, GE, ME>
@@ -311,7 +315,7 @@ where
 
     fn order(&self) -> Option<&num::BigInt> {
         self.order.as_ref()
-    }
+    } 
 }
 
 impl<F, T, GE, ME> Display for EcCurve<F, T, GE, ME>
