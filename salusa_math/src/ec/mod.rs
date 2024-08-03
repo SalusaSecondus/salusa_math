@@ -1,13 +1,12 @@
 pub mod montgomery;
 pub mod weierstrass;
-pub mod mont2;
 
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
     use num::{BigInt, One};
 
-    use crate::group::{GenericFieldElement, Group, GroupElement, ZAddElement, ZField, ZMultElement};
+    use crate::group::{Group, GroupElement, ZAddElement, ZField, ZMultElement};
 
     use super::{montgomery::{self, CRYPTO_PALS_MONTGOMERY, CRYPTO_PALS_MONTGOMERY_G}, weierstrass::{self, CRYPTO_PALS_WEIERSTRASS, CRYPTO_PALS_WEIERSTRASS_G}};
     #[test]

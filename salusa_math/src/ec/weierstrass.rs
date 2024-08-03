@@ -16,7 +16,7 @@ use lazy_static::lazy_static;
 use num::{BigInt, Num};
 use salusa_math_macros::GroupOps;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AffinePoint<FE>
 where
     FE: Clone + Debug,
@@ -48,7 +48,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, GroupOps)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, GroupOps)]
 pub struct EcPoint<F, T, GE, ME>
 where
     F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,
@@ -188,7 +188,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EcCurve<F,  T, GE, ME>
 where
     F: Field<T, GenericFieldElement<T, F, GE, ME>, GE, ME>,

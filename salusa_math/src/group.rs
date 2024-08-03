@@ -1,10 +1,8 @@
 use std::{
-    fmt::{Debug, Display},
-    marker::PhantomData,
-    ops::{Add, Div, Mul, Neg, Sub},
+    collections::HashMap, fmt::{Debug, Display}, hash::Hash, marker::PhantomData, ops::{Add, Div, Mul, Neg, Sub}
 };
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{bail, Result};
 use num::{bigint::Sign, BigInt, One, Zero};
 use salusa_math_macros::{FieldOps, GroupOps};
 
@@ -91,9 +89,11 @@ where
     fn of(&self, val: &T) -> Result<GE>;
     fn wrap(&self, val: T) -> Result<GE>;
     fn order(&self) -> Option<&BigInt>;
+
+
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ZAddGroup {
     modulus: BigInt,
 }
@@ -146,7 +146,7 @@ impl Group<BigInt, ZAddElement> for ZAddGroup {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, GroupOps)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, GroupOps)]
 pub struct ZAddElement {
     value: BigInt,
     group: ZAddGroup,
@@ -202,12 +202,12 @@ impl Display for ZAddElement {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ZMultGroup {
     modulus: BigInt,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, GroupOps)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, GroupOps)]
 pub struct ZMultElement {
     value: BigInt,
     group: ZMultGroup,
@@ -399,7 +399,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ZField {
     add_group: ZAddGroup,
     mult_group: ZMultGroup,
@@ -414,7 +414,7 @@ impl ZField {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, GroupOps, FieldOps)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, GroupOps, FieldOps)]
 pub struct GenericFieldElement<T, F, GE, ME>
 where
     T: Eq + Clone + Debug,
@@ -607,50 +607,68 @@ impl
     }
 }
 
-pub fn pollard_kangaroo<F, GE, GT>(y: &GE, a: &BigInt, b: &BigInt, g: &GE, n: usize, f: F) -> Result<BigInt>
-    where F: Fn(&GE) -> BigInt,
-        GE: GroupElement<GT>,
-        GT: Eq {
+pub fn kangaroo_table<F, GE, GT>( b: &BigInt, g: &GE, n: usize, f: &F) -> (HashMap<GE, BigInt>, BigInt)
+where F: Fn(&GE) -> BigInt,
+        GE: GroupElement<GT> + Display + Hash,
+        GT: Eq
+{
+    let insert_count = 1.max(n / 16384);
+    let mut result = HashMap::new();
     let mut xt = BigInt::zero();
     let mut yt = g.scalar_mult(&b);
-    // println!("Generating first table to {}", n);
-    // let n_f = n as f64;
+    println!("Generating first table to {}", n);
+    let n_f = n as f64;
     for _i in 1..=n  {
         // println!("i = {}; yt = {}", _i, yt);
-        // if _i % 1000000 == 0 {
-        //     println!("{}/{} ({})", _i, n, _i as f64 / n_f);
-        // }
+        if _i % 1000000 == 0 {
+            println!("{}/{} ({})", _i, n, _i as f64 / n_f);
+        }
+        if _i % insert_count == 0 {
+            result.insert(yt.clone(), xt.clone());
+        }
         let fyt = f(&yt);
         xt += &fyt;
         yt = yt.gop(&g.scalar_mult(&fyt));
         // xt %= m;
         // yt %= m;
     }
+    result.insert(yt.clone(), xt.clone());
+    (result, xt)
+}
 
-    let xt = xt;
-    let yt = yt;
-
-    let mut xw = BigInt::zero();
-    let mut yw = y.clone();
-    let limit = (b - a) + &xt;
-
-    // println!("Doing search");
-
-    while xw < limit {
-        let fyw = f(&yw);
-        // println!("{} <? {}, {}, {}", xw, limit, yw, fyw);
-        xw += &fyw;
-        yw = yw.gop(&g.scalar_mult(&fyw));
-        // yw *= g.modpow(&fyw, m);
-        // xw %= m;
-        // yw %= m;
-
-        if yw == yt {
-            return Ok(b + xt - xw);
+pub fn kangaroo_search<F, GE, GT>(table: &HashMap<GE, BigInt>, max_xt: &BigInt, y: &GE, a: &BigInt, b: &BigInt, g: &GE, f: &F) -> Result<BigInt>
+where F: Fn(&GE) -> BigInt,
+    GE: GroupElement<GT> + Display + Hash,
+    GT: Eq {
+        let mut xw = BigInt::zero();
+        let mut yw = y.clone();
+        let limit = (b - a) + max_xt;
+    
+        println!("Doing search");
+    
+        while xw < limit {
+            let fyw = f(&yw);
+            // println!("{} <? {}, {}, {}", xw, limit, yw, fyw);
+            xw += &fyw;
+            yw = yw.gop(&g.scalar_mult(&fyw));
+            // yw *= g.modpow(&fyw, m);
+            // xw %= m;
+            // yw %= m;
+    
+            if let Some(xt) = table.get(&yw) {
+                return Ok(b + xt - xw);
+            }
         }
+    
+        bail!("Too many iterations");
     }
 
-    bail!("Too many iterations");
+pub fn pollard_kangaroo<F, GE, GT>(y: &GE, a: &BigInt, b: &BigInt, g: &GE, n: usize, f: &F) -> Result<BigInt>
+    where F: Fn(&GE) -> BigInt,
+        GE: GroupElement<GT> + Display + Hash,
+        GT: Eq {
+    let (table, max_xt) = kangaroo_table(b, g, n, f);
+    kangaroo_search(&table, &max_xt, y, a, b, g, f)
 }
 
 fn gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
@@ -820,7 +838,7 @@ mod tests {
         let b = BigInt::one() << 20;
         let y = BigInt::from_str_radix("7760073848032689505395005705677365876654629189298052775754597607446617558600394076764814236081991643094239886772481052254010323780165093955236429914607119", 10).unwrap();
         let y = group.of(&y)?;
-        let idx = pollard_kangaroo(&y, &BigInt::zero(), &b, &g, n as usize, f)?;
+        let idx = pollard_kangaroo(&y, &BigInt::zero(), &b, &g, n as usize, &f)?;
         println!("g^{} = {} =? {}", idx, g.scalar_mult(&idx), y);
         assert_eq!(g.scalar_mult(&idx), y);
 
@@ -835,7 +853,7 @@ mod tests {
         let b = BigInt::one() << 40;
         let y = BigInt::from_str_radix("9388897478013399550694114614498790691034187453089355259602614074132918843899833277397448144245883225611726912025846772975325932794909655215329941809013733", 10).unwrap();
         let y = group.of(&y)?;
-        let idx = pollard_kangaroo(&y, &BigInt::zero(), &b, &g, n as usize, f)?;
+        let idx = pollard_kangaroo(&y, &BigInt::zero(), &b, &g, n as usize, &f)?;
         println!("g^{} = {} =? {}", idx, g.scalar_mult(&idx), y);
         assert_eq!(g.scalar_mult(&idx), y);
         Ok(())
