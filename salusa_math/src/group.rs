@@ -89,7 +89,7 @@ where
     fn of(&self, val: &T) -> Result<GE>;
     fn wrap(&self, val: T) -> Result<GE>;
     fn order(&self) -> Option<&BigInt>;
-
+    fn from_bytes(&self, val: &[u8]) -> Result<GE>;
 
 }
 
@@ -124,25 +124,23 @@ impl Group<BigInt, ZAddElement> for ZAddGroup {
 
     #[allow(refining_impl_trait)]
     fn of(&self, val: &BigInt) -> Result<ZAddElement> {
-        if self.contains(val) {
-            Ok(ZAddElement {
-                value: val.to_owned(),
-                group: self.clone(),
-            })
-        } else {
-            bail!("{:?} is not a group element mod {}", val, self.modulus);
-        }
+        Ok(ZAddElement {
+            value: val % &self.modulus,
+            group: self.clone(),
+        })
     }
 
     fn wrap(&self, val: BigInt) -> Result<ZAddElement> {
-        if self.contains(&val) {
-            Ok(ZAddElement {
-                value: val,
-                group: self.clone(),
-            })
-        } else {
-            bail!("{:?} is not a group element mod {}", val, self.modulus);
-        }
+        Ok(ZAddElement {
+            value: val % &self.modulus,
+            group: self.clone(),
+        })
+    }
+
+    fn from_bytes(&self, val: &[u8]) -> Result<ZAddElement> {
+        let raw = BigInt::from_bytes_be(Sign::Plus, val);
+        // ensure!(self.contains(&raw));
+        self.wrap(raw)
     }
 }
 
@@ -232,29 +230,28 @@ impl Group<BigInt, ZMultElement> for ZMultGroup {
     }
 
     fn of(&self, val: &BigInt) -> Result<ZMultElement> {
-        if self.contains(val) {
-            Ok(ZMultElement {
-                value: val.to_owned(),
-                group: self.clone(),
-            })
-        } else {
-            bail!("{:?} is not a group element", val);
-        }
+        Ok(ZMultElement {
+            value: val % &self.modulus,
+            group: self.clone(),
+        })
     }
 
     fn wrap(&self, val: BigInt) -> Result<ZMultElement> {
-        if self.contains(&val) {
-            Ok(ZMultElement {
-                value: val,
-                group: self.clone(),
-            })
-        } else {
-            bail!("{:?} is not a group element", val);
-        }
+        Ok(ZMultElement {
+            value: val % &self.modulus,
+            group: self.clone(),
+        })
+
     }
 
     fn order(&self) -> Option<&BigInt> {
         todo!()
+    }
+
+    fn from_bytes(&self, val: &[u8]) -> Result<ZMultElement> {
+        let raw = BigInt::from_bytes_be(Sign::Plus, val);
+        // ensure!(self.contains(&raw));
+        self.wrap(raw)
     }
 }
 
@@ -587,6 +584,12 @@ impl Group<BigInt, GenericFieldElement<BigInt, Self, ZAddElement, ZMultElement>>
 
     fn order(&self) -> Option<&BigInt> {
         self.add_group.order()
+    }
+
+    fn from_bytes(&self, val: &[u8]) -> Result<GenericFieldElement<BigInt, Self, ZAddElement, ZMultElement>> {
+        let raw = BigInt::from_bytes_be(Sign::Plus, val);
+        // ensure!(self.contains(&raw));
+        self.wrap(raw)
     }
 }
 

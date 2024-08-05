@@ -276,7 +276,13 @@ where
 
     fn order(&self) -> Option<&num::BigInt> {
         self.order.as_ref()
-    }   
+    }
+
+    fn from_bytes(&self, val: &[u8]) -> Result<EcPoint<F, T, GE, ME>> {
+        let u = self.field().from_bytes(val)?;
+        ensure!(self.contains(&u));
+        self.wrap(u)
+    }
 }
 
 impl<F, T, GE, ME> Display for EcCurve<F, T, GE, ME>

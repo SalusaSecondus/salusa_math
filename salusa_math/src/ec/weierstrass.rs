@@ -16,6 +16,9 @@ use lazy_static::lazy_static;
 use num::{BigInt, Num};
 use salusa_math_macros::GroupOps;
 
+pub type StdCurve = EcCurve<ZField, BigInt, ZAddElement, ZMultElement>;
+pub type StdPoint = EcPoint<ZField, BigInt, ZAddElement, ZMultElement>;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AffinePoint<FE>
 where
@@ -315,7 +318,17 @@ where
 
     fn order(&self) -> Option<&num::BigInt> {
         self.order.as_ref()
-    } 
+    }
+
+    fn from_bytes(&self, val: &[u8]) -> Result<EcPoint<F, T, GE, ME>> {
+        let parts = val.split_at(val.len() / 2);
+        let x = self.field().from_bytes(parts.0)?;
+        let y = self.field().from_bytes(parts.0)?;
+        let inf = x.is_zero();
+        let point = AffinePoint { x, y, inf};
+        ensure!(self.contains(&point));
+        self.wrap(point)
+    }
 }
 
 impl<F, T, GE, ME> Display for EcCurve<F, T, GE, ME>
@@ -331,12 +344,7 @@ where
 }
 
 lazy_static! {
-    pub static ref CRYPTO_PALS_WEIERSTRASS: EcCurve<
-        ZField,
-        BigInt,
-        ZAddElement,
-        ZMultElement,
-    > = {
+    pub static ref CRYPTO_PALS_WEIERSTRASS: StdCurve = {
         let gf = ZField::modulus(
             &BigInt::from_str_radix("233970423115425145524320034830162017933", 10).unwrap(),
         );
@@ -345,12 +353,7 @@ lazy_static! {
         let order = BigInt::from_str_radix("29246302889428143187362802287225875743", 10).unwrap();
         EcCurve::new(a, b, Some(order))
     };
-    pub static ref CRYPTO_PALS_WEIERSTRASS_G: EcPoint<
-        ZField,
-        BigInt,
-        ZAddElement,
-        ZMultElement,
-    > = CRYPTO_PALS_WEIERSTRASS
+    pub static ref CRYPTO_PALS_WEIERSTRASS_G: StdPoint = CRYPTO_PALS_WEIERSTRASS
         .wrap(AffinePoint::new(
             CRYPTO_PALS_WEIERSTRASS.field().wrap(182u32.into()).unwrap(),
             CRYPTO_PALS_WEIERSTRASS
@@ -359,11 +362,30 @@ lazy_static! {
                 .unwrap()
         ))
         .unwrap();
+
+    pub static ref NIST_P256 : StdCurve = {
+        let p = BigInt::from_str_radix("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff", 16).unwrap();
+        let gf = ZField::modulus(&p);
+        let a = BigInt::from_str_radix("ffffffff00000001000000000000000000000000fffffffffffffffffffffffc", 16).unwrap();
+        let b = BigInt::from_str_radix("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b", 16).unwrap();
+        let a = gf.wrap(a).unwrap();
+        let b = gf.wrap(b).unwrap();
+        let order = BigInt::from_str_radix("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551", 16).unwrap();
+        EcCurve::new(a, b, Some(order))
+    };
+    pub static ref NIST_P256_G : StdPoint = {
+        let x = BigInt::from_str_radix("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296", 16).unwrap();
+        let y = BigInt::from_str_radix("4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5", 16).unwrap();
+        let x = NIST_P256.field().wrap(x).unwrap();
+        let y = NIST_P256.field().wrap(y).unwrap();
+        let point = AffinePoint {x, y, inf: false};
+        NIST_P256.wrap(point).unwrap()
+    };
 }
 
 #[cfg(test)]
 mod tests {
-    use num::One;
+    use num::{One, Zero};
     use num_bigint::RandBigInt;
     use rand_core::OsRng;
 
@@ -390,7 +412,27 @@ mod tests {
             .scalar_mult(&(CRYPTO_PALS_WEIERSTRASS.order().unwrap() - BigInt::one()));
         println!("{}", result);
         println!("{}", result.gop(&CRYPTO_PALS_WEIERSTRASS_G));
+
+        println!("{}", *NIST_P256);
+        let result = NIST_P256_G.scalar_mult(NIST_P256.order().unwrap());
+        println!("{}", result);
+        assert!(result.is_infinity());
+        assert!(result.is_identity());
+
         Ok(())
+    }
+
+    #[test]
+    fn p256_smoke() -> Result<()> {
+        println!("1G = {}", *NIST_P256_G);
+        println!("2G = {}", NIST_P256_G.scalar_mult(&BigInt::from(2)));
+        println!("3G = {}", NIST_P256_G.scalar_mult(&BigInt::from(3)));
+        println!("100000 G = {}", NIST_P256_G.scalar_mult(&BigInt::from(100000)));
+
+        println!("G + G = {}", &*NIST_P256_G + &*NIST_P256_G);
+
+        Ok(())
+
     }
 
     #[test]
